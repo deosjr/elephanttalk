@@ -16,7 +16,7 @@ func main() {
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-    cResults := calibration(webcam, debugwindow, projection)
+	cResults := calibration(webcam, debugwindow, projection)
 
-    vision(webcam, debugwindow, projection, cResults)
+	vision(webcam, debugwindow, projection, cResults)
 }
