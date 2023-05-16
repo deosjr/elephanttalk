@@ -12,6 +12,7 @@ import (
 type circle struct {
 	mid image.Point
 	r   int
+	c   color.Color
 }
 
 func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
@@ -59,10 +60,10 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 			x := int(v[0])
 			y := int(v[1])
 			r := int(v[2])
+			c := actualImage.At(x, y)
 
 			// if we have sampled colors, only consider circles with color 'close' to a reference
 			if ref != nil {
-				c := actualImage.At(x, y)
 				closeEnough := false
 				for _, refC := range ref {
 					if colorDistance(c, refC) < 20000 {
@@ -77,7 +78,7 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 			mid := image.Pt(x, y)
 			for rect, list := range spatialPartition {
 				if mid.In(rect) {
-					spatialPartition[rect] = append(list, circle{mid, r})
+					spatialPartition[rect] = append(list, circle{mid, r, c})
 				}
 			}
 
@@ -112,35 +113,50 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		red := color.RGBA{255, 0, 0, 0}
 		green := color.RGBA{0, 255, 0, 0}
 		blue := color.RGBA{0, 0, 255, 0}
+		yellow := color.RGBA{255, 255, 0, 0}
 
 		gocv.Rectangle(&cimg, image.Rect(0, 0, w, h), color.RGBA{}, -1)
 
 		spatialPartition := detect(img, cResults.referenceColors)
 
-		// this is cheating, will work for now
-		corners := map[circle]struct{}{}
+		// TODO: this is cheating, will work for now
+		// deduplication due to overlapping detection regions
+		corners := map[image.Point]struct{}{}
 
 		// find corners
 		for k, v := range spatialPartition {
-			dists, ok := findCorners(v)
+			corner, ok := findCorners(v, cResults.referenceColors)
 			if !ok {
 				continue
 			}
 			gocv.Rectangle(&img, k, red, 2)
-			gocv.Line(&img, dists[2].mid, dists[3].mid, blue, 2)
-			gocv.Line(&img, dists[2].mid, dists[4].mid, blue, 2)
-			corners[dists[2]] = struct{}{}
+			gocv.Line(&img, corner.m.p, corner.ll.p, blue, 2)
+			gocv.Line(&img, corner.m.p, corner.rr.p, blue, 2)
+			//gocv.PutText(&img, corner.debugPrint(), corner.m.p.Add(image.Pt(10,20)), 0, .5, color.RGBA{}, 2)
+			gocv.PutText(&img, fmt.Sprintf("%010b", corner.id()), corner.m.p.Add(image.Pt(10, 20)), 0, .5, color.RGBA{}, 2)
+			cs := []color.RGBA{red, green, blue, yellow}
+			gocv.Circle(&img, corner.ll.p, 8, cs[int(corner.ll.c)], -1)
+			gocv.Circle(&img, corner.l.p, 8, cs[int(corner.l.c)], -1)
+			gocv.Circle(&img, corner.m.p, 8, cs[int(corner.m.c)], -1)
+			gocv.Circle(&img, corner.r.p, 8, cs[int(corner.r.c)], -1)
+			gocv.Circle(&img, corner.rr.p, 8, cs[int(corner.rr.c)], -1)
+
+			/*
+			               rot1 := rotateAround(corner.m.p, corner.ll.p, math.Pi/2.)
+			               rot2 := rotateAround(corner.m.p, corner.rr.p, math.Pi/2.)
+			   			gocv.Line(&img, corner.m.p, rot1, red, 5)
+			   			gocv.Line(&img, corner.m.p, rot2, red, 5)
+			*/
+
+			corners[corner.m.p] = struct{}{}
 		}
 
 		if len(corners) == 3 || len(corners) == 4 {
-			cs := []circle{}
+			pts := []image.Point{}
 			for k := range corners {
-				cs = append(cs, k)
+				pts = append(pts, k)
 			}
-			r := circleBound(cs[0])
-			for _, c := range cs[1:] {
-				r = r.Union(circleBound(c))
-			}
+			r := ptsToRect(pts)
 			gocv.Rectangle(&img, r, green, 2)
 			r = r.Inset(int(3 * cResults.pixelsPerCM))
 			r = image.Rectangle{translate(r.Min, cResults.displacement, cResults.displayRatio), translate(r.Max, cResults.displacement, cResults.displayRatio)}
@@ -161,9 +177,30 @@ func euclidian(p image.Point) float64 {
 	return math.Sqrt(float64(p.X*p.X + p.Y*p.Y))
 }
 
-func circleBound(c circle) image.Rectangle {
-	return image.Rectangle{
-		c.mid.Add(image.Pt(-c.r, -c.r)),
-		c.mid.Add(image.Pt(c.r, c.r)),
+// clockwise rotation
+// TODO: ???? expected counterclockwise ????
+func rotateAround(pivot, point image.Point, radians float64) image.Point {
+	s := math.Sin(radians)
+	c := math.Cos(radians)
+
+	x := float64(point.X - pivot.X)
+	y := float64(point.Y - pivot.Y)
+
+	xNew := (c*x - s*y) + float64(pivot.X)
+	yNew := (s*x + c*y) + float64(pivot.Y)
+	return image.Pt(int(xNew), int(yNew))
+}
+
+func ptsToRect(pts []image.Point) image.Rectangle {
+	r := image.Rectangle{
+		pts[0].Add(image.Pt(-1, -1)),
+		pts[0].Add(image.Pt(1, 1)),
 	}
+	for _, p := range pts {
+		r = r.Union(image.Rectangle{
+			p.Add(image.Pt(-1, -1)),
+			p.Add(image.Pt(1, 1)),
+		})
+	}
+	return r
 }
