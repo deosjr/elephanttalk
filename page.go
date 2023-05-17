@@ -8,14 +8,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/deosjr/lispadventures/lisp"
 	"gocv.io/x/gocv"
 )
 
 type page struct {
 	id                     uint64
 	ulhc, urhc, llhc, lrhc image.Point
-	code                   lisp.SExpression
+	code                   string
 }
 
 // to define left and right under rotation:
@@ -135,11 +134,11 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 			}
 		}
 		return corner{
-			rr: dot{p: end1, c: colors[0]},
-			r:  dot{p: leftmid, c: colors[1]},
+			ll: dot{p: end1, c: colors[0]},
+			l:  dot{p: leftmid, c: colors[1]},
 			m:  dot{p: top, c: colors[2]},
-			l:  dot{p: rightmid, c: colors[3]},
-			ll: dot{p: end2, c: colors[4]},
+			r:  dot{p: rightmid, c: colors[3]},
+			rr: dot{p: end2, c: colors[4]},
 		}, true
 	}
 	if euclidian(rot2.Sub(end1)) < 10 {
@@ -161,11 +160,11 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 			}
 		}
 		return corner{
-			rr: dot{p: end2, c: colors[0]},
-			r:  dot{p: leftmid, c: colors[1]},
+			ll: dot{p: end2, c: colors[0]},
+			l:  dot{p: leftmid, c: colors[1]},
 			m:  dot{p: top, c: colors[2]},
-			l:  dot{p: rightmid, c: colors[3]},
-			ll: dot{p: end1, c: colors[4]},
+			r:  dot{p: rightmid, c: colors[3]},
+			rr: dot{p: end1, c: colors[4]},
 		}, true
 	}
 	return corner{}, false

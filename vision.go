@@ -5,6 +5,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"sort"
+	"time"
 
 	"gocv.io/x/gocv"
 )
@@ -34,8 +36,8 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 		float64(img.Rows()/32), // minDist
 		75,                     // param1
 		20,                     // param2
-		1,                      // minRadius
-		100,                    // maxRadius
+		5,                      // minRadius
+		50,                     // maxRadius
 	)
 
 	spatialPartition := map[image.Rectangle][]circle{}
@@ -60,13 +62,15 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 			x := int(v[0])
 			y := int(v[1])
 			r := int(v[2])
-			c := actualImage.At(x, y)
 
+			c := actualImage.At(x, y)
 			// if we have sampled colors, only consider circles with color 'close' to a reference
+			// TODO: we could use gocv.InRange using NewMatFromScalar for lower/upper bounds then bitwiseOr img per color
+			// then join back(?) the four color-filtered versions of the image and only test Hough against that?
 			if ref != nil {
 				closeEnough := false
 				for _, refC := range ref {
-					if colorDistance(c, refC) < 20000 {
+					if colorDistance(c, refC) < 30000 {
 						closeEnough = true
 					}
 				}
@@ -97,6 +101,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	defer cimg.Close()
 
 	for {
+		start := time.Now()
 		if ok := webcam.Read(&img); !ok {
 			fmt.Printf("cannot read device\n")
 			return
@@ -121,7 +126,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 		// TODO: this is cheating, will work for now
 		// deduplication due to overlapping detection regions
-		corners := map[image.Point]struct{}{}
+		cornersByTop := map[image.Point]corner{}
 
 		// find corners
 		for k, v := range spatialPartition {
@@ -132,8 +137,18 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			gocv.Rectangle(&img, k, red, 2)
 			gocv.Line(&img, corner.m.p, corner.ll.p, blue, 2)
 			gocv.Line(&img, corner.m.p, corner.rr.p, blue, 2)
-			//gocv.PutText(&img, corner.debugPrint(), corner.m.p.Add(image.Pt(10,20)), 0, .5, color.RGBA{}, 2)
-			gocv.PutText(&img, fmt.Sprintf("%010b", corner.id()), corner.m.p.Add(image.Pt(10, 20)), 0, .5, color.RGBA{}, 2)
+			//gocv.PutText(&img, fmt.Sprintf("%010b", corner.id()), corner.m.p.Add(image.Pt(10, 40)), 0, .5, color.RGBA{}, 2)
+
+			// calculate angle between right arm of corner and absolute right in webcam space
+			rightArm := corner.rr.p.Sub(corner.m.p)
+			rightAbs := corner.m.p.Add(image.Pt(100, 0)).Sub(corner.m.p)
+			dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
+			angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
+			if corner.rr.p.Y < corner.m.p.Y {
+				angle = 2*math.Pi - angle
+			}
+			gocv.PutText(&img, fmt.Sprintf("%f", angle), corner.m.p.Add(image.Pt(10, 20)), 0, .5, color.RGBA{}, 2)
+
 			cs := []color.RGBA{red, green, blue, yellow}
 			gocv.Circle(&img, corner.ll.p, 8, cs[int(corner.ll.c)], -1)
 			gocv.Circle(&img, corner.l.p, 8, cs[int(corner.l.c)], -1)
@@ -141,29 +156,105 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			gocv.Circle(&img, corner.r.p, 8, cs[int(corner.r.c)], -1)
 			gocv.Circle(&img, corner.rr.p, 8, cs[int(corner.rr.c)], -1)
 
-			/*
-			               rot1 := rotateAround(corner.m.p, corner.ll.p, math.Pi/2.)
-			               rot2 := rotateAround(corner.m.p, corner.rr.p, math.Pi/2.)
-			   			gocv.Line(&img, corner.m.p, rot1, red, 5)
-			   			gocv.Line(&img, corner.m.p, rot2, red, 5)
-			*/
-
-			corners[corner.m.p] = struct{}{}
+			cornersByTop[corner.m.p] = corner
 		}
 
-		if len(corners) == 3 || len(corners) == 4 {
-			pts := []image.Point{}
-			for k := range corners {
-				pts = append(pts, k)
+		corners := []corner{}
+		for _, c := range cornersByTop {
+			corners = append(corners, c)
+		}
+		cornerMap := map[corner]corner{}
+		// compare each corner against all others (TODO: can be more efficient ofc)
+		// try to find another corner: the one clockwise in order that would form a page
+		for _, c := range corners {
+			for _, o := range corners {
+				if c.m.p == o.m.p {
+					continue
+				}
+				right := c.rr.p.Sub(c.m.p)
+				toO := o.m.p.Sub(c.m.p)
+				dot1 := float64(right.X*toO.X + right.Y*toO.Y)
+				angle1 := math.Acos(dot1 / (euclidian(right) * euclidian(toO)))
+				left := o.ll.p.Sub(o.m.p)
+				toC := c.m.p.Sub(o.m.p)
+				dot2 := float64(left.X*toC.X + left.Y*toC.Y)
+				angle2 := math.Acos(dot2 / (euclidian(left) * euclidian(toC)))
+				if angle1 > 0.05 || angle2 > 0.05 {
+					continue
+				}
+				prev, ok := cornerMap[c]
+				if ok {
+					// overwrite previously found corner if this one is closer
+					if euclidian(c.m.p.Sub(prev.m.p)) > euclidian(c.m.p.Sub(o.m.p)) {
+						cornerMap[c] = o
+					}
+				} else {
+					cornerMap[c] = o
+				}
+				break
 			}
+		}
+
+		// parse corners into pages
+		pages := []page{}
+		for len(cornerMap) > 0 {
+			// pick a random starting corner from the map
+			var c, next corner
+			for k, v := range cornerMap {
+				c, next = k, v
+				break
+			}
+			delete(cornerMap, c)
+			cs := []corner{c, next}
+			// TODO: only picking perfect info pages atm, ie. those with 4 corners recognized
+			for i := 0; i < 3; i++ {
+				n, ok := cornerMap[next]
+				if !ok {
+					break
+				}
+				delete(cornerMap, next)
+				cs = append(cs, n)
+				c, next = next, n
+			}
+			if len(cs) != 5 || cs[0].m.p != cs[4].m.p {
+				continue
+			}
+			cs = cs[:4]
+			// assumption: ulhc is indeed upper left hand corner! (TODO: rotation!)
+			sort.Slice(cs, func(i, j int) bool {
+				return cs[i].m.p.X+cs[i].m.p.Y < cs[j].m.p.X+cs[j].m.p.Y
+			})
+			if cs[1].m.p.Y > cs[2].m.p.Y {
+				cs[1], cs[2] = cs[2], cs[1]
+			}
+			p := page{ulhc: cs[0].m.p, urhc: cs[1].m.p, llhc: cs[3].m.p, lrhc: cs[2].m.p}
+			pID := pageID(cs[0].id(), cs[1].id(), cs[3].id(), cs[2].id())
+			p.id = pID
+			pp, ok := pageDB[pID]
+			if ok {
+				p.code = pp.code
+			}
+			pages = append(pages, p)
+		}
+
+		for _, page := range pages {
+			pts := []image.Point{page.ulhc, page.urhc, page.llhc, page.lrhc}
 			r := ptsToRect(pts)
 			gocv.Rectangle(&img, r, green, 2)
 			r = r.Inset(int(3 * cResults.pixelsPerCM))
 			r = image.Rectangle{translate(r.Min, cResults.displacement, cResults.displayRatio), translate(r.Max, cResults.displacement, cResults.displayRatio)}
 			gocv.Rectangle(&cimg, r, green, -1)
 			t := r.Min.Add(image.Pt(r.Dx()/4., r.Dy()/2.))
-			gocv.PutText(&cimg, "Hello World!", t, 0, .5, red, 2)
+			// TODO: use gocv.WarpAffine to rotate text (probably once we have complete separate illumination Mats per page)
+			text := fmt.Sprintf("NOT FOUND:\n%d", page.id)
+			if page.code != "" {
+				text = page.code
+			}
+			gocv.PutText(&cimg, text, t, 0, .5, red, 2)
 		}
+
+		fps := time.Second / time.Since(start)
+		gocv.PutText(&img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
 
 		debugwindow.IMShow(img)
 		projection.IMShow(cimg)
@@ -177,11 +268,12 @@ func euclidian(p image.Point) float64 {
 	return math.Sqrt(float64(p.X*p.X + p.Y*p.Y))
 }
 
-// clockwise rotation
-// TODO: ???? expected counterclockwise ????
+// counterclockwise rotation
+// TODO: ???? expected counterclockwise but getting clockwise ????
+// 'fixed' by flipping sign on angle in sin/cos, shouldnt be there
 func rotateAround(pivot, point image.Point, radians float64) image.Point {
-	s := math.Sin(radians)
-	c := math.Cos(radians)
+	s := math.Sin(-radians)
+	c := math.Cos(-radians)
 
 	x := float64(point.X - pivot.X)
 	y := float64(point.Y - pivot.Y)
