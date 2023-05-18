@@ -69,9 +69,65 @@ func equalWithMargin(x, y, margin float64) bool {
 }
 
 func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
-	if len(v) != 5 {
+	// first detect lines
+	lines := [][]circle{}
+	for i, c := range v {
+		dists := map[int][]int{}
+		for j, o := range v {
+			if i == j {
+				continue
+			}
+			// magic number? bucketing distances is hard
+			d := int(euclidian(c.mid.Sub(o.mid)) / 10)
+			dists[d] = append(dists[d], j)
+		}
+		var candidate []int
+		for _, indices := range dists {
+			if len(indices) == 2 {
+				candidate = indices
+				break
+			}
+		}
+		if candidate == nil {
+			continue
+		}
+		line1 := v[candidate[0]].mid.Sub(c.mid)
+		line2 := v[candidate[1]].mid.Sub(c.mid)
+		dot := float64(line1.X*line2.X + line1.Y*line2.Y)
+		angle := math.Acos(dot / (euclidian(line1) * euclidian(line2)))
+		epsilon := math.Abs(angle - math.Pi)
+		if epsilon < 0.2 {
+			lines = append(lines, []circle{v[candidate[0]], c, v[candidate[1]]})
+		}
+	}
+	if len(lines) != 2 {
 		return corner{}, false
 	}
+
+	line1 := lines[0]
+	line2 := lines[1]
+	var top, end1, end2 circle
+	switch {
+	case line1[0] == line2[0]:
+		top = line1[0]
+		end1, end2 = line1[2], line2[2]
+	case line1[2] == line2[2]:
+		top = line1[2]
+		end1, end2 = line1[0], line2[0]
+	case line1[0] == line2[2]:
+		top = line1[0]
+		end1, end2 = line1[2], line2[0]
+	case line1[2] == line2[0]:
+		top = line1[2]
+		end1, end2 = line1[0], line2[2]
+	default:
+		return corner{}, false
+	}
+
+	mid1, mid2 := line1[1], line2[1]
+	v = []circle{end1, mid1, top, mid2, end2}
+
+	// midpoint test
 	midpoint := v[0].mid
 	for _, p := range v[1:] {
 		midpoint = midpoint.Add(p.mid)
@@ -103,71 +159,46 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 		return corner{}, false
 	}
 
-	sort.Slice(v, func(i, j int) bool {
-		return euclidian(midpoint.Sub(v[i].mid)) < euclidian(midpoint.Sub(v[j].mid))
-	})
-
-	// TODO: assumes counterclockwise rotation, which is why the order of arguments
-	// in corner instantiation looks so weird
 	// Rotate both ends around top by a quarter. One ends on top of the other: this is _left_
-	top := v[2].mid
-	end1, end2 := v[3].mid, v[4].mid
-	rot1 := rotateAround(top, end1, math.Pi/2.)
-	rot2 := rotateAround(top, end2, math.Pi/2.)
+	rot1 := rotateAround(top.mid, end1.mid, math.Pi/2.)
+	rot2 := rotateAround(top.mid, end2.mid, math.Pi/2.)
 
-	if euclidian(rot1.Sub(end2)) < 10 {
-		leftToRight := []int{3, 0, 2, 1, 4}
-		leftmid, rightmid := v[0].mid, v[1].mid
-		if euclidian(end1.Sub(leftmid)) > euclidian(end1.Sub(rightmid)) {
-			leftmid, rightmid = rightmid, leftmid
-			leftToRight[1], leftToRight[3] = 1, 0
-		}
-		colors := make([]dotColor, 5)
-		for i, index := range leftToRight {
-			sample := v[index].c
-			dist := math.MaxFloat64
-			for j, refC := range ref {
-				if d := colorDistance(sample, refC); d < dist {
-					dist = d
-					colors[i] = dotColor(j)
-				}
+	var left, leftmid, right, rightmid circle
+
+	if euclidian(rot1.Sub(end2.mid)) < 10 {
+		left = end1
+		leftmid = mid1
+		rightmid = mid2
+		right = end2
+	} else if euclidian(rot2.Sub(end1.mid)) < 10 {
+		left = end2
+		leftmid = mid2
+		rightmid = mid1
+		right = end1
+	} else {
+		return corner{}, false
+	}
+
+	v = []circle{left, leftmid, top, rightmid, right}
+
+	colors := make([]dotColor, 5)
+	for i, c := range v {
+		sample := c.c
+		dist := math.MaxFloat64
+		for j, refC := range ref {
+			if d := colorDistance(sample, refC); d < dist {
+				dist = d
+				colors[i] = dotColor(j)
 			}
 		}
-		return corner{
-			ll: dot{p: end1, c: colors[0]},
-			l:  dot{p: leftmid, c: colors[1]},
-			m:  dot{p: top, c: colors[2]},
-			r:  dot{p: rightmid, c: colors[3]},
-			rr: dot{p: end2, c: colors[4]},
-		}, true
 	}
-	if euclidian(rot2.Sub(end1)) < 10 {
-		leftToRight := []int{4, 0, 2, 1, 3}
-		leftmid, rightmid := v[0].mid, v[1].mid
-		if euclidian(end2.Sub(leftmid)) > euclidian(end2.Sub(rightmid)) {
-			leftmid, rightmid = rightmid, leftmid
-			leftToRight[1], leftToRight[3] = 1, 0
-		}
-		colors := make([]dotColor, 5)
-		for i, index := range leftToRight {
-			sample := v[index].c
-			dist := math.MaxFloat64
-			for j, refC := range ref {
-				if d := colorDistance(sample, refC); d < dist {
-					dist = d
-					colors[i] = dotColor(j)
-				}
-			}
-		}
-		return corner{
-			ll: dot{p: end2, c: colors[0]},
-			l:  dot{p: leftmid, c: colors[1]},
-			m:  dot{p: top, c: colors[2]},
-			r:  dot{p: rightmid, c: colors[3]},
-			rr: dot{p: end1, c: colors[4]},
-		}, true
-	}
-	return corner{}, false
+	return corner{
+		ll: dot{p: left.mid, c: colors[0]},
+		l:  dot{p: leftmid.mid, c: colors[1]},
+		m:  dot{p: top.mid, c: colors[2]},
+		r:  dot{p: rightmid.mid, c: colors[3]},
+		rr: dot{p: right.mid, c: colors[4]},
+	}, true
 }
 
 func calibrationPage() {

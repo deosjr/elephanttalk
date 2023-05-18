@@ -44,7 +44,7 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 	// webcam is 1280x720, 16x9 times 80
 	// TODO: more than one size, hierarchical division?
 	//square := 80
-	square := 120
+	square := 130
 	square2 := square / 2.
 	for x := 0; x < 32; x++ {
 		for y := 0; y < 18; y++ {
