@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 	//"image"
 	//"image/color"
 	"strings"
@@ -25,18 +25,18 @@ func main() {
 		}
 	}
 	//page1
-	ulhc := cornerShorthand("bbrrg")
-	urhc := cornerShorthand("rybbg")
-	llhc := cornerShorthand("brbyy")
-	lrhc := cornerShorthand("rybgg")
+	ulhc := cornerShorthand("ygybr")
+	urhc := cornerShorthand("brgry")
+	llhc := cornerShorthand("gbgyg")
+	lrhc := cornerShorthand("bgryy")
 	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
 	pageDB[id] = page{id: id, code: "Hello"}
 
 	//page2
-	ulhc = cornerShorthand("bgrrb")
-	urhc = cornerShorthand("rybgg")
-	llhc = cornerShorthand("rbryg")
-	lrhc = cornerShorthand("brgrb")
+	ulhc = cornerShorthand("yggyg")
+	urhc = cornerShorthand("rgyrb")
+	llhc = cornerShorthand("bybbg")
+	lrhc = cornerShorthand("brgrg")
 	id = pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
 	pageDB[id] = page{id: id, code: "World!"}
 
@@ -52,7 +52,7 @@ func main() {
 	defer projection.Close()
 
 	cResults := calibration(webcam, debugwindow, projection)
-	//fmt.Println(cResults)
+	fmt.Println(cResults)
 
 	/*
 		cResults := calibrationResults{
@@ -62,6 +62,5 @@ func main() {
 			referenceColors: []color.RGBA{{216, 74, 67, 0}, {74, 123, 76, 0}, {93, 96, 136, 0}, {241, 190, 89, 0}},
 		}
 	*/
-
 	vision(webcam, debugwindow, projection, cResults)
 }

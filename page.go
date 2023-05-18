@@ -11,6 +11,13 @@ import (
 	"gocv.io/x/gocv"
 )
 
+// using CIELAB color picker and comparing with reference material from dynamicland
+// red6, green7, purple8, orange6
+var cielabRed = color.RGBA{245, 34, 45, 0}
+var cielabGreen = color.RGBA{56, 158, 13, 0}
+var cielabBlue = color.RGBA{57, 16, 133, 0}
+var cielabYellow = color.RGBA{250, 140, 22, 0}
+
 type page struct {
 	id                     uint64
 	ulhc, urhc, llhc, lrhc image.Point
@@ -208,10 +215,10 @@ func calibrationPage() {
 	img := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
 	defer img.Close()
 
-	red := color.RGBA{255, 0, 0, 0}
-	green := color.RGBA{0, 255, 0, 0}
-	blue := color.RGBA{0, 0, 255, 0}
-	yellow := color.RGBA{255, 255, 0, 0}
+	red := cielabRed
+	green := cielabGreen
+	blue := cielabBlue
+	yellow := cielabYellow
 	white := color.RGBA{255, 255, 255, 0}
 
 	midw, midh := w/2., h/2.
@@ -221,9 +228,6 @@ func calibrationPage() {
 	gocv.Circle(&img, image.Pt(midw+d, midh-d), 1*118, green, -1)
 	gocv.Circle(&img, image.Pt(midw-d, midh+d), 1*118, blue, -1)
 	gocv.Circle(&img, image.Pt(midw+d, midh+d), 1*118, yellow, -1)
-
-	// TODO: use CIE LAB color space?
-	//gocv.CvtColor(img, &img, gocv.ColorRGBToLab)
 
 	gocv.IMWrite("out.png", img)
 }
@@ -235,10 +239,10 @@ func blank() {
 	img := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
 	defer img.Close()
 
-	red := color.RGBA{255, 0, 0, 0}
-	green := color.RGBA{0, 255, 0, 0}
-	blue := color.RGBA{0, 0, 255, 0}
-	yellow := color.RGBA{255, 255, 0, 0}
+	red := cielabRed
+	green := cielabGreen
+	blue := cielabBlue
+	yellow := cielabYellow
 	white := color.RGBA{255, 255, 255, 0}
 
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -275,9 +279,6 @@ func blank() {
 	gocv.Circle(&img, image.Pt(w-(3*d+5*r), h-(d+r)), r, randomColor(), -1)
 	gocv.Circle(&img, image.Pt(w-(d+r), h-(2*d+3*r)), r, randomColor(), -1)
 	gocv.Circle(&img, image.Pt(w-(d+r), h-(3*d+5*r)), r, randomColor(), -1)
-
-	// TODO: use CIE LAB color space?
-	//gocv.CvtColor(img, &img, gocv.ColorRGBToLab)
 
 	gocv.IMWrite("out.png", img)
 }
