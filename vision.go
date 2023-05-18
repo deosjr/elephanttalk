@@ -220,21 +220,26 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				continue
 			}
 			cs = cs[:4]
-			// assumption: ulhc is indeed upper left hand corner! (TODO: rotation!)
 			sort.Slice(cs, func(i, j int) bool {
 				return cs[i].m.p.X+cs[i].m.p.Y < cs[j].m.p.X+cs[j].m.p.Y
 			})
 			if cs[1].m.p.Y > cs[2].m.p.Y {
 				cs[1], cs[2] = cs[2], cs[1]
 			}
+			// naive: shift up to 4 times to try and find a valid page
 			p := page{ulhc: cs[0], urhc: cs[1], llhc: cs[2], lrhc: cs[3]}
-			pID := pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
-			p.id = pID
-			pp, ok := pageDB[pID]
-			if ok {
+			for i := 0; i < 4; i++ {
+				pID := pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
+				p.id = pID
+				pp, ok := pageDB[pID]
+				if !ok {
+					p.ulhc, p.urhc, p.lrhc, p.llhc = p.urhc, p.lrhc, p.llhc, p.ulhc
+					continue
+				}
 				p.code = pp.code
+				pages = append(pages, p)
+				break
 			}
-			pages = append(pages, p)
 		}
 
 		for _, page := range pages {
