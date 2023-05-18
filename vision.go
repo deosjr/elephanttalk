@@ -227,8 +227,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			if cs[1].m.p.Y > cs[2].m.p.Y {
 				cs[1], cs[2] = cs[2], cs[1]
 			}
-			p := page{ulhc: cs[0].m.p, urhc: cs[1].m.p, llhc: cs[3].m.p, lrhc: cs[2].m.p}
-			pID := pageID(cs[0].id(), cs[1].id(), cs[3].id(), cs[2].id())
+			p := page{ulhc: cs[0], urhc: cs[1], llhc: cs[2], lrhc: cs[3]}
+			pID := pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
 			p.id = pID
 			pp, ok := pageDB[pID]
 			if ok {
@@ -238,19 +238,49 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		}
 
 		for _, page := range pages {
-			pts := []image.Point{page.ulhc, page.urhc, page.llhc, page.lrhc}
-			r := ptsToRect(pts)
+			pts := []image.Point{page.ulhc.m.p, page.urhc.m.p, page.llhc.m.p, page.lrhc.m.p}
+			center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
+			rightArm := page.ulhc.rr.p.Sub(page.ulhc.m.p)
+			rightAbs := page.ulhc.m.p.Add(image.Pt(100, 0)).Sub(page.ulhc.m.p)
+			dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
+			angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
+			if page.ulhc.rr.p.Y < page.ulhc.m.p.Y {
+				angle = 2*math.Pi - angle
+			}
+			r := ptsToRect([]image.Point{
+				rotateAround(center, pts[0], angle),
+				rotateAround(center, pts[1], angle),
+				rotateAround(center, pts[2], angle),
+				rotateAround(center, pts[3], angle),
+			})
 			gocv.Rectangle(&img, r, green, 2)
+
+			aabb := ptsToRect(pts)
+			gocv.Rectangle(&img, aabb, blue, 2)
+
+			//TODO: all in one scale/rotate/translate
+			// see https://github.com/milosgajdos/gocv-playground/blob/master/04_Geometric_Transformations/README.md
+			illu := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
+			defer illu.Close()
+
 			r = r.Inset(int(3 * cResults.pixelsPerCM))
 			r = image.Rectangle{translate(r.Min, cResults.displacement, cResults.displayRatio), translate(r.Max, cResults.displacement, cResults.displayRatio)}
-			gocv.Rectangle(&cimg, r, green, -1)
+			gocv.Rectangle(&illu, r, green, -1)
 			t := r.Min.Add(image.Pt(r.Dx()/4., r.Dy()/2.))
-			// TODO: use gocv.WarpAffine to rotate text (probably once we have complete separate illumination Mats per page)
 			text := fmt.Sprintf("NOT FOUND:\n%d", page.id)
 			if page.code != "" {
 				text = page.code
 			}
-			gocv.PutText(&cimg, text, t, 0, .5, red, 2)
+			gocv.PutText(&illu, text, t, 0, .5, red, 2)
+
+			center = r.Min.Add(r.Max).Div(2)
+			angle = -(angle / (2 * math.Pi)) * 360.
+			m := gocv.GetRotationMatrix2D(center, angle, 1.0)
+			cillu := gocv.NewMat()
+			defer cillu.Close()
+			gocv.WarpAffine(illu, &cillu, m, image.Pt(w, h))
+
+			blit(&cillu, &cimg)
 		}
 
 		fps := time.Second / time.Since(start)
@@ -262,6 +292,12 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			break
 		}
 	}
+}
+
+// TODO: only works if area to be colored is still black
+// smth like 'set nonblack area in 'from' to white, use that as mask, blacken 'to' area with mask first?'
+func blit(from, to *gocv.Mat) {
+	gocv.BitwiseOr(*from, *to, to)
 }
 
 func euclidian(p image.Point) float64 {

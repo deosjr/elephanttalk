@@ -20,7 +20,7 @@ var cielabYellow = color.RGBA{250, 140, 22, 0}
 
 type page struct {
 	id                     uint64
-	ulhc, urhc, llhc, lrhc image.Point
+	ulhc, urhc, llhc, lrhc corner
 	code                   string
 }
 
