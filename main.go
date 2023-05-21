@@ -30,7 +30,7 @@ func main() {
 	llhc := cornerShorthand("gbgyg")
 	lrhc := cornerShorthand("bgryy")
 	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: "Hello"}
+	pageDB[id] = page{id: id, code: "(claim this 'is-a 'window)"}
 
 	//page2
 	ulhc = cornerShorthand("yggyg")
@@ -38,7 +38,7 @@ func main() {
 	llhc = cornerShorthand("bybbg")
 	lrhc = cornerShorthand("brgrg")
 	id = pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: "World!"}
+	pageDB[id] = page{id: id, code: "(when (is-a ,?page window) (wish ,?page highlighted))"}
 
 	webcam, err := gocv.VideoCaptureDevice(0)
 	if err != nil {
