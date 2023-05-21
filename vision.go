@@ -6,9 +6,12 @@ import (
 	"image/color"
 	"math"
 	"sort"
+    "strconv"
+    "strings"
 	"time"
 
 	"gocv.io/x/gocv"
+    "github.com/deosjr/lispadventures/lisp"
 )
 
 type circle struct {
@@ -100,6 +103,21 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	cimg := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
 	defer cimg.Close()
 
+    // v1 version of claim/wish/when model
+    // claims and wishes are completely equal as asserts, but wishes are checked
+    // outside of db after running fixpoint analysis once per frame
+    // when introduces a rule
+    l := lisp.New()
+    l.Eval(`(define-syntax claim
+              (syntax-rules (dl_assert)
+                ((_ id attr value) (dl_assert id attr value))))`)
+    l.Eval(`(define-syntax wish
+              (syntax-rules (dl_assert)
+                ((_ id attr value) (dl_assert id attr value))))`)
+    l.Eval(`(define-syntax when
+              (syntax-rules (dl_rule :-)
+                ((_ body head) (dl_rule head :- body))))`)
+
 	for {
 		start := time.Now()
 		if ok := webcam.Read(&img); !ok {
@@ -109,6 +127,14 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		if img.Empty() {
 			continue
 		}
+
+        // clear datalog dbs
+        l.Eval("(set! dl_edb (make-hashmap))")
+        l.Eval("(set! dl_idb (make-hashmap))")
+        l.Eval("(set! dl_rdb (quote ()))")
+        l.Eval("(set! dl_counter 0)")
+        pageDatalogIDs := map[uint64]int{}
+        pageIDsDatalog := map[int]uint64{}
 
 		gocv.Circle(&img, image.Pt(5, 5), 5, cResults.referenceColors[0], -1)
 		gocv.Circle(&img, image.Pt(15, 5), 5, cResults.referenceColors[1], -1)
@@ -237,21 +263,63 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 					continue
 				}
 				p.code = pp.code
+			    rightArm := p.ulhc.rr.p.Sub(p.ulhc.m.p)
+			    rightAbs := p.ulhc.m.p.Add(image.Pt(100, 0)).Sub(p.ulhc.m.p)
+			    dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
+			    angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
+			    if p.ulhc.rr.p.Y < p.ulhc.m.p.Y {
+			    	angle = 2*math.Pi - angle
+			    }
+                p.angle = angle
 				pages = append(pages, p)
+
+                // Clockwise from upper left hand corner
+			    pts := []image.Point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
+                // TODO: Dynamicland uses floating point 2d points!
+                lisppoints := fmt.Sprintf("(quote ((%d %d) (%d %d) (%d %d) (%d %d)))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
+                dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
+                    ('id %d)
+                    ('points %s)
+                    ('angle %f)
+                    ('code %q)
+                )`, p.id, lisppoints, p.angle, p.code))
+                pageDatalogIDs[pID] = int(dlID.AsNumber())
+                pageIDsDatalog[int(dlID.AsNumber())] = pID
 				break
 			}
 		}
 
 		for _, page := range pages {
+            // v1 of claim/wish/when
+            // run each pages' code, including claims, wishes and whens
+            // set 'this to the page's id
+            _, err := l.Eval(fmt.Sprintf("(define this %d)", pageDatalogIDs[page.id]))
+            if err != nil { fmt.Println(err) }
+            _, err = l.Eval(page.code)
+            if err != nil { fmt.Println(err) }
+        }
+        l.Eval("(dl_fixpoint)")
+
+        // TODO: cant use this (yet) since cons2list is unexported...
+        ids, _ := l.Eval("(dl_find (?id) where ((,?id wish highlighted)))")
+        // so temporary superugly hack here we go :)
+        idss := ids.String()
+        idss = strings.Replace(idss, "(", "", -1)
+        idss = strings.Replace(idss, ")", "", -1)
+
+        highlightIDs := map[uint64]struct{}{}
+        for _, s := range strings.Fields(idss) {
+            id, _ := strconv.Atoi(s)
+            highlightIDs[pageIDsDatalog[id]] = struct{}{}
+        }
+
+        for _, page := range pages {
+            if _, ok := highlightIDs[page.id]; !ok {
+                continue
+            }
 			pts := []image.Point{page.ulhc.m.p, page.urhc.m.p, page.llhc.m.p, page.lrhc.m.p}
 			center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
-			rightArm := page.ulhc.rr.p.Sub(page.ulhc.m.p)
-			rightAbs := page.ulhc.m.p.Add(image.Pt(100, 0)).Sub(page.ulhc.m.p)
-			dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
-			angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
-			if page.ulhc.rr.p.Y < page.ulhc.m.p.Y {
-				angle = 2*math.Pi - angle
-			}
+            angle := page.angle
 			r := ptsToRect([]image.Point{
 				rotateAround(center, pts[0], angle),
 				rotateAround(center, pts[1], angle),
