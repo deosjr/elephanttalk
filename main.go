@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
-	//"image"
-	//"image/color"
+	//"fmt"
+	"image"
+	"image/color"
 	"strings"
 
 	"gocv.io/x/gocv"
@@ -30,7 +30,7 @@ func main() {
 	llhc := cornerShorthand("gbgyg")
 	lrhc := cornerShorthand("bgryy")
 	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: "(claim this 'is-a 'window)"}
+	pageDB[id] = page{id: id, code: `(claim this 'is-a 'window)`}
 
 	//page2
 	ulhc = cornerShorthand("yggyg")
@@ -38,7 +38,12 @@ func main() {
 	llhc = cornerShorthand("bybbg")
 	lrhc = cornerShorthand("brgrg")
 	id = pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: "(when (is-a ,?page window) (wish ,?page highlighted))"}
+    // TODO: when someone wishes... should be a third 'engine' page
+    // that instead of claiming actually calculates illumination and wishes
+	pageDB[id] = page{id: id, code: `(begin
+        (when (is-a ,?page window) do (wish (,?page highlighted blue)))
+        (when ,?someone wishes (,?page highlighted ,?color) do (claim ,?page 'highlighted ,?color))
+    )`}
 
 	webcam, err := gocv.VideoCaptureDevice(0)
 	if err != nil {
@@ -51,16 +56,14 @@ func main() {
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	cResults := calibration(webcam, debugwindow, projection)
-	fmt.Println(cResults)
+	//cResults := calibration(webcam, debugwindow, projection)
+	//fmt.Println(cResults)
 
-	/*
 		cResults := calibrationResults{
-			pixelsPerCM:     9.502872709515637,
-			displacement:    image.Pt(6, -28),
-			displayRatio:    0.725,
-			referenceColors: []color.RGBA{{216, 74, 67, 0}, {74, 123, 76, 0}, {93, 96, 136, 0}, {241, 190, 89, 0}},
+			pixelsPerCM:     9.7543,
+			displacement:    image.Pt(54, 24),
+			displayRatio:    0.82,
+			referenceColors: []color.RGBA{{255, 65, 61, 0}, {90, 130, 60, 0}, {76, 60, 88, 0}, {255, 109, 50, 0}},
 		}
-	*/
 	vision(webcam, debugwindow, projection, cResults)
 }

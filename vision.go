@@ -103,20 +103,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	cimg := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
 	defer cimg.Close()
 
-    // v1 version of claim/wish/when model
-    // claims and wishes are completely equal as asserts, but wishes are checked
-    // outside of db after running fixpoint analysis once per frame
-    // when introduces a rule
     l := lisp.New()
-    l.Eval(`(define-syntax claim
-              (syntax-rules (dl_assert)
-                ((_ id attr value) (dl_assert id attr value))))`)
-    l.Eval(`(define-syntax wish
-              (syntax-rules (dl_assert)
-                ((_ id attr value) (dl_assert id attr value))))`)
-    l.Eval(`(define-syntax when
-              (syntax-rules (dl_rule :-)
-                ((_ body head) (dl_rule head :- body))))`)
+    LoadRealTalk(l)
 
 	for {
 		start := time.Now()
@@ -276,6 +264,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                 // Clockwise from upper left hand corner
 			    pts := []image.Point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
                 // TODO: Dynamicland uses floating point 2d points!
+                // -> fix by using lisp cons cells of (floatX floatY)
                 lisppoints := fmt.Sprintf("(quote ((%d %d) (%d %d) (%d %d) (%d %d)))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
                 dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
                     ('id %d)
@@ -298,10 +287,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
             _, err = l.Eval(page.code)
             if err != nil { fmt.Println(err) }
         }
-        l.Eval("(dl_fixpoint)")
+        _, err := l.Eval("(dl_fixpoint)")
+        if err != nil { fmt.Println("fixpoint", err) }
 
         // TODO: cant use this (yet) since cons2list is unexported...
-        ids, _ := l.Eval("(dl_find (?id) where ((,?id wish highlighted)))")
+        ids, err := l.Eval("(dl_find ,?id where ((,?id highlighted ,?color)))")
+        if err != nil { fmt.Println("find", err) }
+        fmt.Println(ids)
         // so temporary superugly hack here we go :)
         idss := ids.String()
         idss = strings.Replace(idss, "(", "", -1)
