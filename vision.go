@@ -5,22 +5,50 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"sort"
-    "strconv"
-    "strings"
 	"time"
 
+	"github.com/deosjr/lispadventures/lisp"
 	"gocv.io/x/gocv"
-    "github.com/deosjr/lispadventures/lisp"
 )
 
-type circle struct {
-	mid image.Point
-	r   int
-	c   color.Color
+type frameInput struct {
+	webcam      *gocv.VideoCapture
+	debugWindow *gocv.Window
+	projection  *gocv.Window
+	// TODO: should these be passed as ptrs?
+	img  gocv.Mat
+	cimg gocv.Mat
 }
 
-func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
+func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle), ref []color.RGBA, waitMillis int) error {
+	for {
+		start := time.Now()
+		if ok := fi.webcam.Read(&fi.img); !ok {
+			return fmt.Errorf("cannot read device\n")
+		}
+		if fi.img.Empty() {
+			continue
+		}
+		// since detect draws in img, we take a snapshot first
+		actualImage, _ := fi.img.ToImage()
+		spatialPartition := detect(fi.img, actualImage, ref)
+
+		f(actualImage, spatialPartition)
+
+		fps := time.Second / time.Since(start)
+		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
+
+		fi.debugWindow.IMShow(fi.img)
+		fi.projection.IMShow(fi.cimg)
+		key := fi.debugWindow.WaitKey(waitMillis)
+		if key >= 0 {
+			fmt.Println(key)
+			return nil
+		}
+	}
+}
+
+func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.Rectangle][]circle {
 	cimg := gocv.NewMat()
 	defer cimg.Close()
 
@@ -36,10 +64,10 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 		&circleMat,
 		gocv.HoughGradient,
 		1,                      // dp
-		float64(img.Rows()/32), // minDist
+		float64(img.Rows()/64), // minDistance between centers
 		75,                     // param1
 		20,                     // param2
-		5,                      // minRadius
+		1,                      // minRadius
 		50,                     // maxRadius
 	)
 
@@ -57,7 +85,6 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 		}
 	}
 
-	actualImage, _ := img.ToImage()
 	for i := 0; i < circleMat.Cols(); i++ {
 		v := circleMat.GetVecfAt(0, i)
 		// if circles are found
@@ -97,32 +124,32 @@ func detect(img gocv.Mat, ref []color.RGBA) map[image.Rectangle][]circle {
 }
 
 func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cResults calibrationResults) {
-	w, h := 1280, 720
 	img := gocv.NewMat()
 	defer img.Close()
-	cimg := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
+	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
 	defer cimg.Close()
 
-    l := lisp.New()
-    LoadRealTalk(l)
+	l := lisp.New()
+	LoadRealTalk(l)
 
-	for {
-		start := time.Now()
-		if ok := webcam.Read(&img); !ok {
-			fmt.Printf("cannot read device\n")
-			return
-		}
-		if img.Empty() {
-			continue
-		}
+	fi := frameInput{
+		webcam:      webcam,
+		debugWindow: debugwindow,
+		projection:  projection,
+		img:         img,
+		cimg:        cimg,
+	}
 
-        // clear datalog dbs
-        l.Eval("(set! dl_edb (make-hashmap))")
-        l.Eval("(set! dl_idb (make-hashmap))")
-        l.Eval("(set! dl_rdb (quote ()))")
-        l.Eval("(set! dl_counter 0)")
-        pageDatalogIDs := map[uint64]int{}
-        pageIDsDatalog := map[int]uint64{}
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
+		// clear datalog dbs
+		l.Eval("(set! dl_edb (make-hashmap))")
+		l.Eval("(set! dl_idb (make-hashmap))")
+		l.Eval("(set! dl_rdb (quote ()))")
+		l.Eval("(set! dl_idx_entity (make-hashmap))")
+		l.Eval("(set! dl_idx_attr (make-hashmap))")
+		l.Eval("(set! dl_counter 0)")
+		pageDatalogIDs := map[uint64]int{}
+		pageIDsDatalog := map[int]uint64{}
 
 		gocv.Circle(&img, image.Pt(5, 5), 5, cResults.referenceColors[0], -1)
 		gocv.Circle(&img, image.Pt(15, 5), 5, cResults.referenceColors[1], -1)
@@ -134,9 +161,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		blue := color.RGBA{0, 0, 255, 0}
 		yellow := color.RGBA{255, 255, 0, 0}
 
-		gocv.Rectangle(&cimg, image.Rect(0, 0, w, h), color.RGBA{}, -1)
-
-		spatialPartition := detect(img, cResults.referenceColors)
+		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 
 		// TODO: this is cheating, will work for now
 		// deduplication due to overlapping detection regions
@@ -156,8 +181,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			// calculate angle between right arm of corner and absolute right in webcam space
 			rightArm := corner.rr.p.Sub(corner.m.p)
 			rightAbs := corner.m.p.Add(image.Pt(100, 0)).Sub(corner.m.p)
-			dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
-			angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
+			angle := angleBetween(rightArm, rightAbs)
 			if corner.rr.p.Y < corner.m.p.Y {
 				angle = 2*math.Pi - angle
 			}
@@ -187,12 +211,10 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				}
 				right := c.rr.p.Sub(c.m.p)
 				toO := o.m.p.Sub(c.m.p)
-				dot1 := float64(right.X*toO.X + right.Y*toO.Y)
-				angle1 := math.Acos(dot1 / (euclidian(right) * euclidian(toO)))
+				angle1 := angleBetween(right, toO)
 				left := o.ll.p.Sub(o.m.p)
 				toC := c.m.p.Sub(o.m.p)
-				dot2 := float64(left.X*toC.X + left.Y*toC.Y)
-				angle2 := math.Acos(dot2 / (euclidian(left) * euclidian(toC)))
+				angle2 := angleBetween(left, toC)
 				if angle1 > 0.05 || angle2 > 0.05 {
 					continue
 				}
@@ -233,13 +255,9 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			if len(cs) != 5 || cs[0].m.p != cs[4].m.p {
 				continue
 			}
+			// because cs[0] = cs[4], remove one instance of that corner
 			cs = cs[:4]
-			sort.Slice(cs, func(i, j int) bool {
-				return cs[i].m.p.X+cs[i].m.p.Y < cs[j].m.p.X+cs[j].m.p.Y
-			})
-			if cs[1].m.p.Y > cs[2].m.p.Y {
-				cs[1], cs[2] = cs[2], cs[1]
-			}
+			sortCorners(cs)
 			// naive: shift up to 4 times to try and find a valid page
 			p := page{ulhc: cs[0], urhc: cs[1], llhc: cs[2], lrhc: cs[3]}
 			for i := 0; i < 4; i++ {
@@ -251,81 +269,98 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 					continue
 				}
 				p.code = pp.code
-			    rightArm := p.ulhc.rr.p.Sub(p.ulhc.m.p)
-			    rightAbs := p.ulhc.m.p.Add(image.Pt(100, 0)).Sub(p.ulhc.m.p)
-			    dot := float64(rightArm.X*rightAbs.X + rightArm.Y*rightAbs.Y)
-			    angle := math.Acos(dot / (euclidian(rightArm) * euclidian(rightAbs)))
-			    if p.ulhc.rr.p.Y < p.ulhc.m.p.Y {
-			    	angle = 2*math.Pi - angle
-			    }
-                p.angle = angle
+				rightArm := p.ulhc.rr.p.Sub(p.ulhc.m.p)
+				rightAbs := p.ulhc.m.p.Add(image.Pt(100, 0)).Sub(p.ulhc.m.p)
+				angle := angleBetween(rightArm, rightAbs)
+				if p.ulhc.rr.p.Y < p.ulhc.m.p.Y {
+					angle = 2*math.Pi - angle
+				}
+				p.angle = angle
 				pages = append(pages, p)
 
-                // Clockwise from upper left hand corner
-			    pts := []image.Point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
-                // TODO: Dynamicland uses floating point 2d points!
-                // -> fix by using lisp cons cells of (floatX floatY)
-                lisppoints := fmt.Sprintf("(quote ((%d %d) (%d %d) (%d %d) (%d %d)))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
-                dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
+				// Clockwise from upper left hand corner
+				pts := []image.Point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
+				center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
+				r := ptsToRect([]image.Point{
+					rotateAround(center, pts[0], angle),
+					rotateAround(center, pts[1], angle),
+					rotateAround(center, pts[2], angle),
+					rotateAround(center, pts[3], angle),
+				})
+				gocv.Rectangle(&img, r, green, 2)
+
+				aabb := ptsToRect(pts)
+				gocv.Rectangle(&img, aabb, blue, 2)
+
+				// TODO: Dynamicland uses floating point 2d points!
+				// -> fix by using lisp cons cells of (floatX floatY)
+				lisppoints := fmt.Sprintf("(quote ((%d %d) (%d %d) (%d %d) (%d %d)))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
+				dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
                     ('id %d)
                     ('points %s)
                     ('angle %f)
                     ('code %q)
                 )`, p.id, lisppoints, p.angle, p.code))
-                pageDatalogIDs[pID] = int(dlID.AsNumber())
-                pageIDsDatalog[int(dlID.AsNumber())] = pID
+				pageDatalogIDs[pID] = int(dlID.AsNumber())
+				pageIDsDatalog[int(dlID.AsNumber())] = pID
 				break
 			}
 		}
 
 		for _, page := range pages {
-            // v1 of claim/wish/when
-            // run each pages' code, including claims, wishes and whens
-            // set 'this to the page's id
-            _, err := l.Eval(fmt.Sprintf("(define this %d)", pageDatalogIDs[page.id]))
-            if err != nil { fmt.Println(err) }
-            _, err = l.Eval(page.code)
-            if err != nil { fmt.Println(err) }
-        }
-        _, err := l.Eval("(dl_fixpoint)")
-        if err != nil { fmt.Println("fixpoint", err) }
+			// v1 of claim/wish/when
+			// run each pages' code, including claims, wishes and whens
+			// set 'this to the page's id
+			_, err := l.Eval(fmt.Sprintf("(define this %d)", pageDatalogIDs[page.id]))
+			if err != nil {
+				fmt.Println(err)
+			}
+			_, err = l.Eval(page.code)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+		_, err := l.Eval("(dl_fixpoint)")
+		if err != nil {
+			fmt.Println("fixpoint", err)
+		}
 
-        // TODO: cant use this (yet) since cons2list is unexported...
-        ids, err := l.Eval("(dl_find ,?id where ((,?id highlighted ,?color)))")
-        if err != nil { fmt.Println("find", err) }
-        fmt.Println(ids)
-        // so temporary superugly hack here we go :)
-        idss := ids.String()
-        idss = strings.Replace(idss, "(", "", -1)
-        idss = strings.Replace(idss, ")", "", -1)
+		/*
+		   test, err := l.Eval("(dl_find (,?id ,?p) where ((,?id highlighted ,?color) (,?id (page points) ,?p)))")
+		   if err != nil { fmt.Println("find", err) }
+		   fmt.Println(test)
+		*/
 
-        highlightIDs := map[uint64]struct{}{}
-        for _, s := range strings.Fields(idss) {
-            id, _ := strconv.Atoi(s)
-            highlightIDs[pageIDsDatalog[id]] = struct{}{}
-        }
+		ids, err := l.Eval("(dl_find ,?id where ((,?id highlighted ,?color)))")
+		if err != nil {
+			fmt.Println("find", err)
+		}
 
-        for _, page := range pages {
-            if _, ok := highlightIDs[page.id]; !ok {
-                continue
-            }
+		highlightIDs := map[uint64]struct{}{}
+		lids, _ := lisp.UnpackConsList(ids)
+		for _, idprim := range lids {
+			id := int(idprim.AsNumber())
+			highlightIDs[pageIDsDatalog[id]] = struct{}{}
+		}
+
+		// TODO: all of the below logic should move to a page listening to 'when someone wishes page is highlighted'
+		for _, page := range pages {
+			if _, ok := highlightIDs[page.id]; !ok {
+				continue
+			}
 			pts := []image.Point{page.ulhc.m.p, page.urhc.m.p, page.llhc.m.p, page.lrhc.m.p}
 			center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
-            angle := page.angle
+			angle := page.angle
 			r := ptsToRect([]image.Point{
 				rotateAround(center, pts[0], angle),
 				rotateAround(center, pts[1], angle),
 				rotateAround(center, pts[2], angle),
 				rotateAround(center, pts[3], angle),
 			})
-			gocv.Rectangle(&img, r, green, 2)
-
-			aabb := ptsToRect(pts)
-			gocv.Rectangle(&img, aabb, blue, 2)
 
 			//TODO: all in one scale/rotate/translate
 			// see https://github.com/milosgajdos/gocv-playground/blob/master/04_Geometric_Transformations/README.md
-			illu := gocv.NewMatWithSize(h, w, gocv.MatTypeCV8UC3)
+			illu := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
 			defer illu.Close()
 
 			r = r.Inset(int(3 * cResults.pixelsPerCM))
@@ -343,19 +378,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			m := gocv.GetRotationMatrix2D(center, angle, 1.0)
 			cillu := gocv.NewMat()
 			defer cillu.Close()
-			gocv.WarpAffine(illu, &cillu, m, image.Pt(w, h))
+			gocv.WarpAffine(illu, &cillu, m, image.Pt(beamerWidth, beamerHeight))
 
 			blit(&cillu, &cimg)
 		}
 
-		fps := time.Second / time.Since(start)
-		gocv.PutText(&img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
-
-		debugwindow.IMShow(img)
-		projection.IMShow(cimg)
-		if debugwindow.WaitKey(10) >= 0 {
-			break
-		}
+	}, cResults.referenceColors, 10); err != nil {
+		fmt.Println(err)
 	}
 }
 
@@ -363,37 +392,4 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 // smth like 'set nonblack area in 'from' to white, use that as mask, blacken 'to' area with mask first?'
 func blit(from, to *gocv.Mat) {
 	gocv.BitwiseOr(*from, *to, to)
-}
-
-func euclidian(p image.Point) float64 {
-	return math.Sqrt(float64(p.X*p.X + p.Y*p.Y))
-}
-
-// counterclockwise rotation
-// TODO: ???? expected counterclockwise but getting clockwise ????
-// 'fixed' by flipping sign on angle in sin/cos, shouldnt be there
-func rotateAround(pivot, point image.Point, radians float64) image.Point {
-	s := math.Sin(-radians)
-	c := math.Cos(-radians)
-
-	x := float64(point.X - pivot.X)
-	y := float64(point.Y - pivot.Y)
-
-	xNew := (c*x - s*y) + float64(pivot.X)
-	yNew := (s*x + c*y) + float64(pivot.Y)
-	return image.Pt(int(xNew), int(yNew))
-}
-
-func ptsToRect(pts []image.Point) image.Rectangle {
-	r := image.Rectangle{
-		pts[0].Add(image.Pt(-1, -1)),
-		pts[0].Add(image.Pt(1, 1)),
-	}
-	for _, p := range pts {
-		r = r.Union(image.Rectangle{
-			p.Add(image.Pt(-1, -1)),
-			p.Add(image.Pt(1, 1)),
-		})
-	}
-	return r
 }
