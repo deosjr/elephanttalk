@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"image/color"
+    "math"
 
 	"github.com/deosjr/lispadventures/lisp"
 	"gocv.io/x/gocv"
@@ -33,11 +34,10 @@ func LoadRealTalk(l lisp.Lisp) {
 	// so it better be idempotent / not too inefficient!
 	// if conditions match, assert a fact (?id 'code ?code) where ?code already has vars replaced
 	// (when (is-a (unquote ?page) window) do (wish ((unquote ?page) highlighted blue)))
-	// TODO: multiple conditions, because conflicts with 'do' currently (?)
 	l.Eval(`(define-syntax when
               (syntax-rules (wishes do code this dl_rule :- begin)
-                ((_ condition do statement ...)
-                 (dl_rule (code this (begin statement ...)) :- condition))
+                ((_ (condition ...) do statement ...)
+                 (dl_rule (code this (begin statement ...)) :- condition ...))
                 ((_ someone wishes w do statement ...)
                  (dl_rule (code this (begin statement ...)) :- (wishes someone w)))))`)
 
@@ -55,6 +55,11 @@ func LoadRealTalk(l lisp.Lisp) {
          (map (lambda (c) (eval (car (cdr (cdr c))))) new)
          (if (not (null? new)) (dl_fixpoint_iterate)))))`)
 
+    // macro to make comments work
+    l.Eval(`(define-syntax --
+              (syntax-rules (comment)
+                ((_ x ...) (comment (quote x) ...))))`)
+
 	loadGoCV(l.Env)
 }
 
@@ -69,26 +74,48 @@ func loadGoCV(env *lisp.Env) {
 	env.Add("blue", lisp.NewPrimitive(color.RGBA{0, 0, 255, 0}))
 
 	// illumination is a gocv mat
-	env.AddBuiltin("new_illumination", newIllumination)
-	//env.AddBuiltin("ill:rectangle", )
+	env.AddBuiltin("make-illumination", newIllumination)
+    // TODO: once we explore declarations in projectionspace vs rotation a bit more
+	//env.AddBuiltin("ill:rectangle", illuRectangle)
+
+    // gocv drawing, might be replaced by ill:draw funcs at some point
+    env.AddBuiltin("gocv:rect", gocvRectangle)
 
 	// golang image lib for 2d primitives
 	// TODO: if we reason only in projector space or even page space
 	// some of this might become less relevant or even confusing
 	env.AddBuiltin("point2d", newPoint2D)
-	env.AddBuiltin("cons2point", cons2point)
-	env.AddBuiltin("new_rectangle", newRectangle)
+	env.AddBuiltin("make-rectangle", newRectangle)
+	env.AddBuiltin("rect:union", rectUnion)
+
+    // missing math builtins
+    env.AddBuiltin("sin", sine)
+    env.AddBuiltin("cos", cosine)
+
+    // comments
+    env.AddBuiltin("comment", ignore)
 }
 
 // TODO: defer close? memory leak otherwise?
 // dont want to write close in lisp, so for now we'll need some memory mngment
 // outside of it (ie keeping track in Go of created mats and closing them)
+// NOTE: gocv.Mat is unhashable, so we cant even store it in datalog anyways
 var illus = []gocv.Mat{}
 
 func newIllumination(args []lisp.SExpression) (lisp.SExpression, error) {
-	illu := gocv.NewMatWithSize(1280, 720, gocv.MatTypeCV8UC3)
+	illu := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
 	illus = append(illus, illu)
 	return lisp.NewPrimitive(illu), nil
+}
+
+// (gocv:rect illu rect color fill)
+func gocvRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
+    illu := args[0].AsPrimitive().(gocv.Mat)
+    rect := args[1].AsPrimitive().(image.Rectangle)
+    c := args[2].AsPrimitive().(color.RGBA)
+    fill := int(args[3].AsNumber())
+    gocv.Rectangle(&illu, rect, c, fill)
+    return lisp.NewPrimitive(illu), nil
 }
 
 // (point2D x y) -> image.Point primitive
@@ -97,16 +124,28 @@ func newPoint2D(args []lisp.SExpression) (lisp.SExpression, error) {
 	return lisp.NewPrimitive(image.Pt(x, y)), nil
 }
 
-// (cons2point (x y)) -> image.Point primitive
-func cons2point(args []lisp.SExpression) (lisp.SExpression, error) {
-	c, _ := lisp.UnpackConsList(args[0])
-	x, y := int(c[0].AsNumber()), int(c[1].AsNumber())
-	return lisp.NewPrimitive(image.Pt(x, y)), nil
+// (make-rectangle minx miny maxx maxy) -> image.Rectangle primitive
+func newRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
+	px, py := int(args[0].AsNumber()), int(args[1].AsNumber())
+	qx, qy := int(args[2].AsNumber()), int(args[3].AsNumber())
+	r := image.Rectangle{image.Pt(px, py), image.Pt(qx, qy)}
+	return lisp.NewPrimitive(r), nil
 }
 
-// (new_rectangle min:image.Point max:image.Point) -> image.Rectangle primitive
-func newRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
-	min, max := args[0].AsPrimitive().(image.Point), args[1].AsPrimitive().(image.Point)
-	r := image.Rectangle{min, max}
-	return lisp.NewPrimitive(r), nil
+func rectUnion(args []lisp.SExpression) (lisp.SExpression, error) {
+    r1 := args[0].AsPrimitive().(image.Rectangle)
+    r2 := args[1].AsPrimitive().(image.Rectangle)
+    return lisp.NewPrimitive(r1.Union(r2)), nil
+}
+
+func sine(args []lisp.SExpression) (lisp.SExpression, error) {
+    return lisp.NewPrimitive(math.Sin(args[0].AsNumber())), nil
+}
+
+func cosine(args []lisp.SExpression) (lisp.SExpression, error) {
+    return lisp.NewPrimitive(math.Cos(args[0].AsNumber())), nil
+}
+
+func ignore(args []lisp.SExpression) (lisp.SExpression, error) {
+    return lisp.NewPrimitive(true), nil    
 }

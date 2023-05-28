@@ -292,9 +292,18 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				aabb := ptsToRect(pts)
 				gocv.Rectangle(&img, aabb, blue, 2)
 
+                // TODO: currently breaks everything ?!?
+                // in lisp we store the points already translated to beamerspace instead of webcamspace
+                // NOTE: this means distances between papers in inches should use a conversion as well!
+                /*
+                for i, pt := range pts {
+                    pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+                }
+                */
+
 				// TODO: Dynamicland uses floating point 2d points!
 				// -> fix by using lisp cons cells of (floatX floatY)
-				lisppoints := fmt.Sprintf("(quote ((%d %d) (%d %d) (%d %d) (%d %d)))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
+				lisppoints := fmt.Sprintf("(list (cons %d %d) (cons %d %d) (cons %d %d) (cons %d %d))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
 				dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
                     ('id %d)
                     ('points %s)
@@ -307,6 +316,55 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			}
 		}
 
+        // TODO for testing purposes, this page always counts as recognized
+        testpage := page{
+            id: 42,
+            code: `(begin
+            (-- should be counterclockwise, somehow isnt; fixed for now by negating angle --)
+            (define rotateAround (lambda (pivot point angle)
+              (let ((s (sin (- 0 angle)))
+                    (c (cos (- 0 angle)))
+                    (px (car point))
+                    (py (cdr point))
+                    (cx (car pivot))
+                    (cy (cdr pivot)))
+                (let ((x (- px cx))
+                      (y (- py cy)))
+                  (cons
+                    (+ cx (- (* c x) (* s y)))
+                    (+ cy (+ (* s x) (* c y))))))))
+
+            (define point-add (lambda (p q)
+              (cons
+                (+ (car p) (car q))
+                (+ (cdr p) (cdr q)))))
+
+            (define point-div (lambda (p n)
+              (cons (/ (car p) n) (/ (cdr p) n))))
+
+            (define midpoint (lambda (points)
+              (point-div (foldl point-add points (cons 0 0)) (length points))))
+
+            (define points->rect (lambda (points)
+              (let ((rects (map (lambda (p)
+                (let ((min (point-add p (cons -1 -1))) (max (point-add p (cons 1 1))))
+                  (make-rectangle (car min) (cdr min) (car max) (cdr max)))) points)))
+                    (-- (foldl rects rect:union (car rects)) --)
+                    (rect:union (rect:union (rect:union (car rects) (car (cdr rects))) (car (cdr (cdr rects)))) (car (cdr (cdr (cdr rects)))))
+                   )))
+
+            (-- TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? --)
+
+            (when ((highlighted ,?page ,?color) ((page points) ,?page ,?points) ((page angle) ,?page ,?angle)) do
+                (gocv:rect (make-illumination) (points->rect (quote ,?points)) ,?color -1)
+                (claim ,?page 'has-illumination 'illu))
+            )`,
+        }
+        pageDB[42] = testpage
+        pageDatalogIDs[42] = 0
+        pageIDsDatalog[0] = 42
+        pages = append(pages, testpage)
+
 		for _, page := range pages {
 			// v1 of claim/wish/when
 			// run each pages' code, including claims, wishes and whens
@@ -317,21 +375,16 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			}
 			_, err = l.Eval(page.code)
 			if err != nil {
-				fmt.Println(err)
+				fmt.Println(page.id, err)
 			}
 		}
+
 		_, err := l.Eval("(dl_fixpoint)")
 		if err != nil {
 			fmt.Println("fixpoint", err)
 		}
 
-		/*
-		   test, err := l.Eval("(dl_find (,?id ,?p) where ((,?id highlighted ,?color) (,?id (page points) ,?p)))")
-		   if err != nil { fmt.Println("find", err) }
-		   fmt.Println(test)
-		*/
-
-		ids, err := l.Eval("(dl_find ,?id where ((,?id highlighted ,?color)))")
+		ids, err := l.Eval("(dl_find ,?id where ((,?id has-illumination ,?illu)))")
 		if err != nil {
 			fmt.Println("find", err)
 		}
@@ -343,11 +396,22 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			highlightIDs[pageIDsDatalog[id]] = struct{}{}
 		}
 
+        // TODO: this loop should range over all entries in db that look like 'someone wishes (?page has ?illumination)'
+        // and just blit that illumination to the screen
 		// TODO: all of the below logic should move to a page listening to 'when someone wishes page is highlighted'
-		for _, page := range pages {
-			if _, ok := highlightIDs[page.id]; !ok {
-				continue
-			}
+        // that then does the calculations needed and claims for page to have illumination
+        /*
+        for id := range highlightIDs {
+            page, ok := pageDB[id]
+            if !ok {
+                continue
+            }
+            for _, p := range pages {
+                if p.id == page.id {
+                    page = p
+                    break
+                }
+            }
 			pts := []image.Point{page.ulhc.m.p, page.urhc.m.p, page.llhc.m.p, page.lrhc.m.p}
 			center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
 			angle := page.angle
@@ -364,7 +428,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			defer illu.Close()
 
 			r = r.Inset(int(3 * cResults.pixelsPerCM))
-			r = image.Rectangle{translate(r.Min, cResults.displacement, cResults.displayRatio), translate(r.Max, cResults.displacement, cResults.displayRatio)}
+            r := image.Rectangle { translate min and max }
 			gocv.Rectangle(&illu, r, green, -1)
 			t := r.Min.Add(image.Pt(r.Dx()/4., r.Dy()/2.))
 			text := fmt.Sprintf("NOT FOUND:\n%d", page.id)
@@ -382,6 +446,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 			blit(&cillu, &cimg)
 		}
+        */
+        fmt.Println(len(illus))
+        for _, illu := range illus {
+			blit(&illu, &cimg)
+            illu.Close()
+        }
+        illus = []gocv.Mat{}
 
 	}, cResults.referenceColors, 10); err != nil {
 		fmt.Println(err)

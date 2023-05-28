@@ -36,7 +36,7 @@ func main() {
 	llhc := cornerShorthand("gbgyg")
 	lrhc := cornerShorthand("bgryy")
 	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: `(claim this 'highlighted blue)`}
+	pageDB[id] = page{id: id, code: `(claim this 'highlighted 'blue)`}
 	//pageDB[id] = page{id: id, code: `(claim this 'is-a 'window)`}
 
 	//page2
@@ -47,7 +47,7 @@ func main() {
 	id = pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
 	// TODO: when someone wishes... should be a third 'engine' page
 	// that instead of claiming actually calculates illumination and wishes
-	pageDB[id] = page{id: id, code: `(claim this 'highlighted red)`}
+	pageDB[id] = page{id: id, code: `(claim this 'highlighted 'red)`}
 	/*
 		pageDB[id] = page{id: id, code: `(begin
 	        (when (is-a ,?page window) do (wish (,?page highlighted blue)))
