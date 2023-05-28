@@ -100,7 +100,7 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 			if ref != nil {
 				closeEnough := false
 				for _, refC := range ref {
-					if colorDistance(c, refC) < 30000 {
+					if colorDistance(c, refC) < 15000 {
 						closeEnough = true
 					}
 				}

@@ -119,8 +119,8 @@ func ptsToRect(pts []point) image.Rectangle {
 func colorDistance(sample, reference color.Color) float64 {
 	rr, gg, bb, _ := sample.RGBA()
 	refR, refG, refB, _ := reference.RGBA()
-	dR := float64(rr) - float64(refR)
-	dG := float64(gg) - float64(refG)
-	dB := float64(bb) - float64(refB)
-	return math.Sqrt(dR*dR + dG*dG + dB*dB)
+	dR := float64(rr >> 8) - float64(refR >> 8)
+	dG := float64(gg >> 8) - float64(refG >> 8)
+	dB := float64(bb >> 8) - float64(refB >> 8)
+	return dR*dR + dG*dG + dB*dB
 }

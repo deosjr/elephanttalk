@@ -195,6 +195,20 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 				colors[i] = dotColor(j)
 			}
 		}
+	    rr, gg, bb, _ := sample.RGBA()
+        rr = rr >> 8
+        gg = gg >> 8
+        bb = bb >> 8
+        switch {
+        case rr < 80 && gg < 80 && bb < 80:
+            colors[i] = blueDot
+        case gg > rr && gg > bb:
+            colors[i] = greenDot
+        case rr > 2*gg && gg > bb+20:
+            colors[i] = yellowDot
+        case rr > 2*gg && rr > 3*bb:
+            colors[i] = redDot
+        }
 	}
 	return corner{
 		ll: dot{p: left.mid, c: colors[0]},
