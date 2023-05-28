@@ -80,6 +80,8 @@ func loadGoCV(env *lisp.Env) {
 
     // gocv drawing, might be replaced by ill:draw funcs at some point
     env.AddBuiltin("gocv:rect", gocvRectangle)
+    env.AddBuiltin("gocv:rotation_matrix2D", rotationMatrix)
+    env.AddBuiltin("gocv:warp_affine", warpAffine)
 
 	// golang image lib for 2d primitives
 	// TODO: if we reason only in projector space or even page space
@@ -116,6 +118,24 @@ func gocvRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
     fill := int(args[3].AsNumber())
     gocv.Rectangle(&illu, rect, c, fill)
     return lisp.NewPrimitive(illu), nil
+}
+
+// (gocv:rotation_matrix2D cx cy degrees scale)
+func rotationMatrix(args []lisp.SExpression) (lisp.SExpression, error) {
+	x, y := int(args[0].AsNumber()), int(args[1].AsNumber())
+    degrees := args[2].AsNumber()
+    scale := args[3].AsNumber()
+    return lisp.NewPrimitive(gocv.GetRotationMatrix2D(image.Pt(x, y), degrees, scale)), nil
+}
+
+// (gocv:warp_affine src dst m sx sy)
+func warpAffine(args []lisp.SExpression) (lisp.SExpression, error) {
+    src := args[0].AsPrimitive().(gocv.Mat)
+    dst := args[1].AsPrimitive().(gocv.Mat)
+    m := args[2].AsPrimitive().(gocv.Mat)
+	x, y := int(args[3].AsNumber()), int(args[4].AsNumber())
+    gocv.WarpAffine(src, &dst, m, image.Pt(x, y))
+	return lisp.NewPrimitive(true), nil
 }
 
 // (point2D x y) -> image.Point primitive

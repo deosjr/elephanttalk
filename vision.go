@@ -292,7 +292,6 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				aabb := ptsToRect(pts)
 				gocv.Rectangle(&img, aabb, blue, 2)
 
-                // TODO: currently breaks everything ?!?
                 // in lisp we store the points already translated to beamerspace instead of webcamspace
                 // NOTE: this means distances between papers in inches should use a conversion as well!
                 for i, pt := range pts {
@@ -313,6 +312,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		}
 
         // TODO for testing purposes, this page always counts as recognized
+        // TODO: add back possibility to write text under rotation
         testpage := page{
             id: 42,
             code: `(begin
@@ -352,8 +352,16 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
             (-- TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? --)
 
             (when ((highlighted ,?page ,?color) ((page points) ,?page ,?points) ((page angle) ,?page ,?angle)) do
-                (gocv:rect (make-illumination) (points->rect (quote ,?points)) ,?color -1)
-                (claim ,?page 'has-illumination 'illu))
+                (let ((center (midpoint (quote ,?points)))
+                      (unangle (* -360 (/ ,?angle (* 2 pi))))
+                      (illu (make-illumination)))
+                  (let ((rotated (map (lambda (p) (rotateAround center p ,?angle)) (quote ,?points)))
+                        (m (gocv:rotation_matrix2D (car center) (cdr center) unangle 1.0)))
+                    (gocv:rect illu (points->rect rotated) ,?color -1)
+                    (-- might not work because it doesnt support inplace --)
+                    (gocv:warp_affine illu illu m 1280 720)
+                    (claim ,?page 'has-illumination 'illu))
+                ))
             )`,
         }
         pageDB[42] = testpage
@@ -392,58 +400,6 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			highlightIDs[pageIDsDatalog[id]] = struct{}{}
 		}
 
-        // TODO: this loop should range over all entries in db that look like 'someone wishes (?page has ?illumination)'
-        // and just blit that illumination to the screen
-		// TODO: all of the below logic should move to a page listening to 'when someone wishes page is highlighted'
-        // that then does the calculations needed and claims for page to have illumination
-        /*
-        for id := range highlightIDs {
-            page, ok := pageDB[id]
-            if !ok {
-                continue
-            }
-            for _, p := range pages {
-                if p.id == page.id {
-                    page = p
-                    break
-                }
-            }
-			pts := []image.Point{page.ulhc.m.p, page.urhc.m.p, page.llhc.m.p, page.lrhc.m.p}
-			center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
-			angle := page.angle
-			r := ptsToRect([]image.Point{
-				rotateAround(center, pts[0], angle),
-				rotateAround(center, pts[1], angle),
-				rotateAround(center, pts[2], angle),
-				rotateAround(center, pts[3], angle),
-			})
-
-			//TODO: all in one scale/rotate/translate
-			// see https://github.com/milosgajdos/gocv-playground/blob/master/04_Geometric_Transformations/README.md
-			illu := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
-			defer illu.Close()
-
-			r = r.Inset(int(3 * cResults.pixelsPerCM))
-            r := image.Rectangle { translate min and max }
-			gocv.Rectangle(&illu, r, green, -1)
-			t := r.Min.Add(image.Pt(r.Dx()/4., r.Dy()/2.))
-			text := fmt.Sprintf("NOT FOUND:\n%d", page.id)
-			if page.code != "" {
-				text = page.code
-			}
-			gocv.PutText(&illu, text, t, 0, .5, red, 2)
-
-			center = r.Min.Add(r.Max).Div(2)
-			angle = -(angle / (2 * math.Pi)) * 360.
-			m := gocv.GetRotationMatrix2D(center, angle, 1.0)
-			cillu := gocv.NewMat()
-			defer cillu.Close()
-			gocv.WarpAffine(illu, &cillu, m, image.Pt(beamerWidth, beamerHeight))
-
-			blit(&cillu, &cimg)
-		}
-        */
-        fmt.Println(len(illus))
         for _, illu := range illus {
 			blit(&illu, &cimg)
             illu.Close()
