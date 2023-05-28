@@ -79,7 +79,9 @@ func loadGoCV(env *lisp.Env) {
 	//env.AddBuiltin("ill:rectangle", illuRectangle)
 
     // gocv drawing, might be replaced by ill:draw funcs at some point
+    env.AddBuiltin("gocv:line", gocvLine)
     env.AddBuiltin("gocv:rect", gocvRectangle)
+    env.AddBuiltin("gocv:text", gocvText)
     env.AddBuiltin("gocv:rotation_matrix2D", rotationMatrix)
     env.AddBuiltin("gocv:warp_affine", warpAffine)
 
@@ -110,6 +112,17 @@ func newIllumination(args []lisp.SExpression) (lisp.SExpression, error) {
 	return lisp.NewPrimitive(illu), nil
 }
 
+// (gocv:line illu p q color fill)
+func gocvLine(args []lisp.SExpression) (lisp.SExpression, error) {
+    illu := args[0].AsPrimitive().(gocv.Mat)
+    p := args[1].AsPrimitive().(image.Point)
+    q := args[2].AsPrimitive().(image.Point)
+    c := args[3].AsPrimitive().(color.RGBA)
+    fill := int(args[4].AsNumber())
+    gocv.Line(&illu, p, q, c, fill)
+    return lisp.NewPrimitive(illu), nil
+}
+
 // (gocv:rect illu rect color fill)
 func gocvRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
     illu := args[0].AsPrimitive().(gocv.Mat)
@@ -117,6 +130,20 @@ func gocvRectangle(args []lisp.SExpression) (lisp.SExpression, error) {
     c := args[2].AsPrimitive().(color.RGBA)
     fill := int(args[3].AsNumber())
     gocv.Rectangle(&illu, rect, c, fill)
+    return lisp.NewPrimitive(illu), nil
+}
+
+// TODO: cant pick a font yet
+// NOTE: text cant be drawn at an angle, so has to be drawn then rotated
+// (gocv:text illu text origin scale color fill)
+func gocvText(args []lisp.SExpression) (lisp.SExpression, error) {
+    illu := args[0].AsPrimitive().(gocv.Mat)
+    txt := args[1].AsPrimitive().(string)
+    origin := args[2].AsPrimitive().(image.Point)
+    scale := args[3].AsNumber()
+    c := args[4].AsPrimitive().(color.RGBA)
+    fill := int(args[5].AsNumber())
+    gocv.PutText(&illu, txt, origin, gocv.FontHersheySimplex, scale, c, fill)
     return lisp.NewPrimitive(illu), nil
 }
 

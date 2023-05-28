@@ -36,7 +36,7 @@ func main() {
 	llhc := cornerShorthand("gbgyg")
 	lrhc := cornerShorthand("bgryy")
 	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: `(claim this 'highlighted 'blue)`}
+	pageDB[id] = page{id: id, code: `(claim this 'outlined 'blue)`}
 	//pageDB[id] = page{id: id, code: `(claim this 'is-a 'window)`}
 
 	//page2

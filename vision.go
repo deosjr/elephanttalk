@@ -358,10 +358,26 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                   (let ((rotated (map (lambda (p) (rotateAround center p ,?angle)) (quote ,?points)))
                         (m (gocv:rotation_matrix2D (car center) (cdr center) unangle 1.0)))
                     (gocv:rect illu (points->rect rotated) ,?color -1)
+                    (gocv:text illu "TEST" (point2d (car center) (cdr center)) 0.5 green 2)
                     (-- might not work because it doesnt support inplace --)
                     (gocv:warp_affine illu illu m 1280 720)
-                    (claim ,?page 'has-illumination 'illu))
-                ))
+                    (claim ,?page 'has-illumination 'illu))))
+
+            (when ((outlined ,?page ,?color) ((page points) ,?page ,?points)) do
+                (let ((pts (quote ,?points))
+                      (illu (make-illumination)))
+                  (let ((ulhc (car pts))
+                        (urhc (car (cdr pts)))
+                        (lrhc (car (cdr (cdr pts))))
+                        (llhc (car (cdr (cdr (cdr pts))))))
+                    (let ((ulhc (point2d (car ulhc) (cdr ulhc)))
+                          (urhc (point2d (car urhc) (cdr urhc)))
+                          (lrhc (point2d (car lrhc) (cdr lrhc)))
+                          (llhc (point2d (car llhc) (cdr llhc))))
+                      (gocv:line illu ulhc urhc ,?color 5)
+                      (gocv:line illu urhc lrhc ,?color 5)
+                      (gocv:line illu lrhc llhc ,?color 5)
+                      (gocv:line illu llhc ulhc ,?color 5)))))
             )`,
         }
         pageDB[42] = testpage
