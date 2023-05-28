@@ -11,7 +11,7 @@ import (
 
 type calibrationResults struct {
 	pixelsPerCM     float64
-	displacement    image.Point
+	displacement    point
 	displayRatio    float64
 	referenceColors []color.RGBA
 }
@@ -60,7 +60,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			}
 			sortCirclesAsCorners(v)
 			gocv.Rectangle(&img, k, red, 2)
-			r := image.Rectangle{v[0].mid.Add(image.Pt(-v[0].r, -v[0].r)), v[3].mid.Add(image.Pt(v[3].r, v[3].r))}
+            r := image.Rectangle{
+                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+            }
 			gocv.Rectangle(&img, r, blue, 2)
 
 			// TODO: draw indicators for horizontal/vertical align
@@ -75,10 +78,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	// draw conclusions about colors and distances
 	webcamMid := circlesMidpoint(pattern)
 	// average over all 4 distances to circles in pattern
-	dpixels := euclidian(pattern[0].mid.Sub(webcamMid))
-	dpixels += euclidian(pattern[1].mid.Sub(webcamMid))
-	dpixels += euclidian(pattern[2].mid.Sub(webcamMid))
-	dpixels += euclidian(pattern[3].mid.Sub(webcamMid))
+	dpixels := euclidian(pattern[0].mid.sub(webcamMid))
+	dpixels += euclidian(pattern[1].mid.sub(webcamMid))
+	dpixels += euclidian(pattern[2].mid.sub(webcamMid))
+	dpixels += euclidian(pattern[3].mid.sub(webcamMid))
 	dpixels = dpixels / 4.
 	dcm := math.Sqrt(1.5*1.5 + 1.5*1.5)
 
@@ -87,8 +90,8 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	pixPerCM := dpixels / dcm
 
 	// beamer midpoint vs webcam midpoint displacement
-	beamerMid := image.Pt(w, h)
-	displacement := beamerMid.Sub(webcamMid)
+	beamerMid := point{float64(w), float64(h)}
+	displacement := beamerMid.sub(webcamMid)
 
 	// get color samples of the four dots as reference values
 	var colorSamples []color.RGBA
@@ -106,7 +109,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			// TODO: average within the circle?
 			colorSamples = make([]color.RGBA, 4)
 			for i, circle := range pattern {
-				c := actualImage.At(circle.mid.X, circle.mid.Y)
+				c := actualImage.At(int(circle.mid.x), int(circle.mid.y))
 				rr, gg, bb, _ := c.RGBA()
 				colorSamples[i] = color.RGBA{uint8(rr), uint8(gg), uint8(bb), 0}
 			}
@@ -131,16 +134,19 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			}
 			sortCirclesAsCorners(v)
 			gocv.Rectangle(&img, k, red, 2)
-			r := image.Rectangle{v[0].mid.Add(image.Pt(-v[0].r, -v[0].r)), v[3].mid.Add(image.Pt(v[3].r, v[3].r))}
+            r := image.Rectangle{
+                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+            }
 			gocv.Rectangle(&img, r, blue, 2)
 
 			midpoint := circlesMidpoint(v)
 			// assume Y component stays 0 (i.e. we are horizontally aligned between webcam and beamer)
-			displayRatio = float64(midpoint.Sub(webcamMid).X) / 200.0
+			displayRatio = midpoint.sub(webcamMid).x / 200.0
 
 			// projecting the draw ratio difference
-			withoutRatio := midpoint.Add(displacement)
-			gocv.Line(&cimg, beamerMid, withoutRatio, blue, 2)
+			withoutRatio := midpoint.add(displacement).toIntPt()
+			gocv.Line(&cimg, beamerMid.toIntPt(), withoutRatio, blue, 2)
 
 			// TODO: draw indicators for horizontal/vertical align
 			pattern = v
@@ -166,33 +172,36 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 
 			colorDiff := make([]float64, 4)
 			for i, circle := range v {
-				c := actualImage.At(circle.mid.X, circle.mid.Y)
+				c := actualImage.At(int(circle.mid.x), int(circle.mid.y))
 				colorDiff[i] = colorDistance(c, colorSamples[i])
 			}
 			// experimentally, all diffs under 10k means we are good (paper rightway up)
 			// unless ofc lighting changes drastically
 
 			gocv.Rectangle(&img, k, red, 2)
-			minv0r := -v[0].r
-			v3r := v[3].r
-			r := image.Rectangle{v[0].mid.Add(image.Pt(minv0r, minv0r)), v[3].mid.Add(image.Pt(v3r, v3r))}
+            r := image.Rectangle{
+                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+            }
 			gocv.Rectangle(&img, r, blue, 2)
 
-			gocv.Circle(&img, v[0].mid, v[0].r, red, 2)
-			gocv.Circle(&img, v[1].mid, v[1].r, green, 2)
-			gocv.Circle(&img, v[2].mid, v[2].r, blue, 2)
-			gocv.Circle(&img, v[3].mid, v[3].r, yellow, 2)
+			gocv.Circle(&img, v[0].mid.toIntPt(), int(v[0].r), red, 2)
+			gocv.Circle(&img, v[1].mid.toIntPt(), int(v[1].r), green, 2)
+			gocv.Circle(&img, v[2].mid.toIntPt(), int(v[2].r), blue, 2)
+			gocv.Circle(&img, v[3].mid.toIntPt(), int(v[3].r), yellow, 2)
 
 			// now we project around the whole A4 containing the calibration pattern
 			// a4 in cm: 21 x 29.7
-			a4hpx := int((29.7 * pixPerCM) / 2.)
-			a4wpx := int((21.0 * pixPerCM) / 2.)
+			a4hpx := (29.7 * pixPerCM) / 2.
+			a4wpx := (21.0 * pixPerCM) / 2.
 			midpoint := circlesMidpoint(v)
-			a4 := image.Rectangle{midpoint.Add(image.Pt(-a4wpx, -a4hpx)), midpoint.Add(image.Pt(a4wpx, a4hpx))}
+			min := midpoint.add(point{-a4wpx, -a4hpx})
+			max := midpoint.add(point{a4wpx, a4hpx})
+            a4 := image.Rectangle{min.toIntPt(), max.toIntPt()}
 			gocv.Rectangle(&img, a4, blue, 4)
 
 			// adjust for displacement and display ratio
-			a4 = image.Rectangle{translate(a4.Min, displacement, displayRatio), translate(a4.Max, displacement, displayRatio)}
+			a4 = image.Rectangle{translate(min, displacement, displayRatio).toIntPt(), translate(max, displacement, displayRatio).toIntPt()}
 			gocv.Rectangle(&cimg, a4, blue, 4)
 		}
 
@@ -216,9 +225,9 @@ func findCalibrationPattern(v []circle) bool {
 	}
 	midpoint := circlesMidpoint(v)
 
-	dist := euclidian(midpoint.Sub(v[0].mid))
+	dist := euclidian(midpoint.sub(v[0].mid))
 	for _, p := range v[1:] {
-		ddist := euclidian(midpoint.Sub(p.mid))
+		ddist := euclidian(midpoint.sub(p.mid))
 		if !equalWithMargin(ddist, dist, 2.0) {
 			return false
 		}

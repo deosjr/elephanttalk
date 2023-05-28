@@ -59,7 +59,7 @@ func pageID(ulhc, urhc, llhc, lrhc uint16) uint64 {
 }
 
 type dot struct {
-	p image.Point
+	p point
 	c dotColor
 }
 
@@ -86,7 +86,7 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 				continue
 			}
 			// magic number? bucketing distances is hard
-			d := int(euclidian(c.mid.Sub(o.mid)) / 10)
+			d := int(euclidian(c.mid.sub(o.mid)) / 10)
 			dists[d] = append(dists[d], j)
 		}
 		var candidate []int
@@ -99,9 +99,9 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 		if candidate == nil {
 			continue
 		}
-		line1 := v[candidate[0]].mid.Sub(c.mid)
-		line2 := v[candidate[1]].mid.Sub(c.mid)
-		dot := float64(line1.X*line2.X + line1.Y*line2.Y)
+		line1 := v[candidate[0]].mid.sub(c.mid)
+		line2 := v[candidate[1]].mid.sub(c.mid)
+		dot := line1.x*line2.x + line1.y*line2.y
 		angle := math.Acos(dot / (euclidian(line1) * euclidian(line2)))
 		epsilon := math.Abs(angle - math.Pi)
 		if epsilon < 0.2 {
@@ -136,15 +136,11 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 	v = []circle{end1, mid1, top, mid2, end2}
 
 	// midpoint test
-	midpoint := v[0].mid
-	for _, p := range v[1:] {
-		midpoint = midpoint.Add(p.mid)
-	}
-	midpoint = midpoint.Div(len(v))
+    midpoint := circlesMidpoint(v)
 
 	sortedDistances := []float64{}
 	for _, p := range v {
-		sortedDistances = append(sortedDistances, euclidian(midpoint.Sub(p.mid)))
+		sortedDistances = append(sortedDistances, euclidian(midpoint.sub(p.mid)))
 	}
 	sort.Float64s(sortedDistances)
 	// first 3 are roughly equal, last 2 are roughly x2
@@ -173,12 +169,12 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 
 	var left, leftmid, right, rightmid circle
 
-	if euclidian(rot1.Sub(end2.mid)) < 10 {
+	if euclidian(rot1.sub(end2.mid)) < 10 {
 		left = end1
 		leftmid = mid1
 		rightmid = mid2
 		right = end2
-	} else if euclidian(rot2.Sub(end1.mid)) < 10 {
+	} else if euclidian(rot2.sub(end1.mid)) < 10 {
 		left = end2
 		leftmid = mid2
 		rightmid = mid1

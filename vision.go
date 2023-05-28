@@ -89,11 +89,11 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 		v := circleMat.GetVecfAt(0, i)
 		// if circles are found
 		if len(v) > 2 {
-			x := int(v[0])
-			y := int(v[1])
-			r := int(v[2])
+			x := float64(v[0])
+			y := float64(v[1])
+			r := float64(v[2])
 
-			c := actualImage.At(x, y)
+			c := actualImage.At(int(x), int(y))
 			// if we have sampled colors, only consider circles with color 'close' to a reference
 			// TODO: we could use gocv.InRange using NewMatFromScalar for lower/upper bounds then bitwiseOr img per color
 			// then join back(?) the four color-filtered versions of the image and only test Hough against that?
@@ -109,14 +109,14 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 				}
 			}
 
-			mid := image.Pt(x, y)
+			mid := image.Pt(int(x), int(y))
 			for rect, list := range spatialPartition {
 				if mid.In(rect) {
-					spatialPartition[rect] = append(list, circle{mid, r, c})
+					spatialPartition[rect] = append(list, circle{point{x,y}, r, c})
 				}
 			}
 
-			gocv.Circle(&img, mid, r, color.RGBA{0, 0, 255, 0}, 2)
+			gocv.Circle(&img, mid, int(r), color.RGBA{0, 0, 255, 0}, 2)
 			gocv.Circle(&img, mid, 2, color.RGBA{255, 0, 0, 0}, 3)
 		}
 	}
@@ -174,27 +174,27 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				continue
 			}
 			gocv.Rectangle(&img, k, red, 2)
-			gocv.Line(&img, corner.m.p, corner.ll.p, blue, 2)
-			gocv.Line(&img, corner.m.p, corner.rr.p, blue, 2)
+			gocv.Line(&img, corner.m.p.toIntPt(), corner.ll.p.toIntPt(), blue, 2)
+			gocv.Line(&img, corner.m.p.toIntPt(), corner.rr.p.toIntPt(), blue, 2)
 			//gocv.PutText(&img, fmt.Sprintf("%010b", corner.id()), corner.m.p.Add(image.Pt(10, 40)), 0, .5, color.RGBA{}, 2)
 
 			// calculate angle between right arm of corner and absolute right in webcam space
-			rightArm := corner.rr.p.Sub(corner.m.p)
-			rightAbs := corner.m.p.Add(image.Pt(100, 0)).Sub(corner.m.p)
+			rightArm := corner.rr.p.sub(corner.m.p)
+			rightAbs := corner.m.p.add(point{100, 0}).sub(corner.m.p)
 			angle := angleBetween(rightArm, rightAbs)
-			if corner.rr.p.Y < corner.m.p.Y {
+			if corner.rr.p.y < corner.m.p.y {
 				angle = 2*math.Pi - angle
 			}
-			gocv.PutText(&img, fmt.Sprintf("%f", angle), corner.m.p.Add(image.Pt(10, 20)), 0, .5, color.RGBA{}, 2)
+			gocv.PutText(&img, fmt.Sprintf("%f", angle), corner.m.p.add(point{10, 20}).toIntPt(), 0, .5, color.RGBA{}, 2)
 
 			cs := []color.RGBA{red, green, blue, yellow}
-			gocv.Circle(&img, corner.ll.p, 8, cs[int(corner.ll.c)], -1)
-			gocv.Circle(&img, corner.l.p, 8, cs[int(corner.l.c)], -1)
-			gocv.Circle(&img, corner.m.p, 8, cs[int(corner.m.c)], -1)
-			gocv.Circle(&img, corner.r.p, 8, cs[int(corner.r.c)], -1)
-			gocv.Circle(&img, corner.rr.p, 8, cs[int(corner.rr.c)], -1)
+			gocv.Circle(&img, corner.ll.p.toIntPt(), 8, cs[int(corner.ll.c)], -1)
+			gocv.Circle(&img, corner.l.p.toIntPt(), 8, cs[int(corner.l.c)], -1)
+			gocv.Circle(&img, corner.m.p.toIntPt(), 8, cs[int(corner.m.c)], -1)
+			gocv.Circle(&img, corner.r.p.toIntPt(), 8, cs[int(corner.r.c)], -1)
+			gocv.Circle(&img, corner.rr.p.toIntPt(), 8, cs[int(corner.rr.c)], -1)
 
-			cornersByTop[corner.m.p] = corner
+			cornersByTop[corner.m.p.toIntPt()] = corner
 		}
 
 		corners := []corner{}
@@ -209,11 +209,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				if c.m.p == o.m.p {
 					continue
 				}
-				right := c.rr.p.Sub(c.m.p)
-				toO := o.m.p.Sub(c.m.p)
+				right := c.rr.p.sub(c.m.p)
+				toO := o.m.p.sub(c.m.p)
 				angle1 := angleBetween(right, toO)
-				left := o.ll.p.Sub(o.m.p)
-				toC := c.m.p.Sub(o.m.p)
+				left := o.ll.p.sub(o.m.p)
+				toC := c.m.p.sub(o.m.p)
 				angle2 := angleBetween(left, toC)
 				if angle1 > 0.05 || angle2 > 0.05 {
 					continue
@@ -221,7 +221,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				prev, ok := cornerMap[c]
 				if ok {
 					// overwrite previously found corner if this one is closer
-					if euclidian(c.m.p.Sub(prev.m.p)) > euclidian(c.m.p.Sub(o.m.p)) {
+					if euclidian(c.m.p.sub(prev.m.p)) > euclidian(c.m.p.sub(o.m.p)) {
 						cornerMap[c] = o
 					}
 				} else {
@@ -269,19 +269,19 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 					continue
 				}
 				p.code = pp.code
-				rightArm := p.ulhc.rr.p.Sub(p.ulhc.m.p)
-				rightAbs := p.ulhc.m.p.Add(image.Pt(100, 0)).Sub(p.ulhc.m.p)
+				rightArm := p.ulhc.rr.p.sub(p.ulhc.m.p)
+				rightAbs := p.ulhc.m.p.add(point{100, 0}).sub(p.ulhc.m.p)
 				angle := angleBetween(rightArm, rightAbs)
-				if p.ulhc.rr.p.Y < p.ulhc.m.p.Y {
+				if p.ulhc.rr.p.y < p.ulhc.m.p.y {
 					angle = 2*math.Pi - angle
 				}
 				p.angle = angle
 				pages = append(pages, p)
 
 				// Clockwise from upper left hand corner
-				pts := []image.Point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
-				center := pts[0].Add(pts[1]).Add(pts[2]).Add(pts[3]).Div(4)
-				r := ptsToRect([]image.Point{
+				pts := []point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
+				center := pts[0].add(pts[1]).add(pts[2]).add(pts[3]).div(4)
+				r := ptsToRect([]point{
 					rotateAround(center, pts[0], angle),
 					rotateAround(center, pts[1], angle),
 					rotateAround(center, pts[2], angle),
@@ -295,15 +295,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                 // TODO: currently breaks everything ?!?
                 // in lisp we store the points already translated to beamerspace instead of webcamspace
                 // NOTE: this means distances between papers in inches should use a conversion as well!
-                /*
                 for i, pt := range pts {
                     pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
                 }
-                */
 
-				// TODO: Dynamicland uses floating point 2d points!
-				// -> fix by using lisp cons cells of (floatX floatY)
-				lisppoints := fmt.Sprintf("(list (cons %d %d) (cons %d %d) (cons %d %d) (cons %d %d))", pts[0].X, pts[0].Y, pts[1].X, pts[1].Y, pts[2].X, pts[2].Y, pts[3].X, pts[3].Y)
+				lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
 				dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
                     ('id %d)
                     ('points %s)
