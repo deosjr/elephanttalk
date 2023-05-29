@@ -10,7 +10,7 @@ import (
 )
 
 // TODO: a proper database solution
-var pageDB = map[uint64]page{}
+var pageDB = map[uint32]page{}
 
 var (
 	// detected from webcam output instead!
@@ -31,23 +31,25 @@ func main() {
 		}
 	}
 	//page1
-	ulhc := cornerShorthand("ygybr")
-	urhc := cornerShorthand("brgry")
-	llhc := cornerShorthand("gbgyg")
-	lrhc := cornerShorthand("bgryy")
-	id := pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	pageDB[id] = page{id: id, code: `(claim this 'outlined 'blue)`}
+    page{
+	    ulhc: cornerShorthand("ygybr"),
+	    urhc: cornerShorthand("brgry"),
+	    lrhc: cornerShorthand("gbgyg"),
+	    llhc: cornerShorthand("bgryy"),
+	    code: `(claim this 'outlined 'blue)`,
+    }.addToDB()
 	//pageDB[id] = page{id: id, code: `(claim this 'is-a 'window)`}
 
 	//page2
-	ulhc = cornerShorthand("yggyg")
-	urhc = cornerShorthand("rgyrb")
-	llhc = cornerShorthand("bybbg")
-	lrhc = cornerShorthand("brgrg")
-	id = pageID(ulhc.id(), urhc.id(), llhc.id(), lrhc.id())
-	// TODO: when someone wishes... should be a third 'engine' page
-	// that instead of claiming actually calculates illumination and wishes
-	pageDB[id] = page{id: id, code: `(claim this 'highlighted 'red)`}
+    page{
+	    ulhc: cornerShorthand("yggyg"),
+	    urhc: cornerShorthand("rgyrb"),
+	    lrhc: cornerShorthand("bybbg"),
+	    llhc: cornerShorthand("brgrg"),
+	    // TODO: when someone wishes... should be a third 'engine' page
+	    // that instead of claiming actually calculates illumination and wishes
+	    code: `(claim this 'highlighted 'red)`,
+    }.addToDB()
 	/*
 		pageDB[id] = page{id: id, code: `(begin
 	        (when (is-a ,?page window) do (wish (,?page highlighted blue)))

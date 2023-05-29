@@ -19,8 +19,8 @@ var cielabBlue = color.RGBA{57, 16, 133, 0}
 var cielabYellow = color.RGBA{250, 140, 22, 0}
 
 type page struct {
-	id                     uint64
-	ulhc, urhc, llhc, lrhc corner
+    id                     uint64
+	ulhc, urhc, lrhc, llhc corner
 	angle                  float64
 	code                   string
 }
@@ -49,13 +49,50 @@ func (c corner) id() uint16 {
 	return out
 }
 
-func pageID(ulhc, urhc, llhc, lrhc uint16) uint64 {
+// one page has 4 corners, therefore a 40 bit unique id in theory
+// however, we want to still recognise a paper when one corner is covered
+// practically this means each paper has 4 unique 30 bit ids (related by a 10-bit shift)
+// this takes 2 bits out of the space of unique 30 bit pageIDs, so 2**28 remain
+func pageID(ulhc, urhc, lrhc, llhc uint16) uint64 {
 	var out uint64
-	out |= uint64(lrhc)
-	out |= uint64(llhc) << 10
+	out |= uint64(llhc)
+	out |= uint64(lrhc) << 10
 	out |= uint64(urhc) << 20
 	out |= uint64(ulhc) << 30
 	return out
+}
+
+func pagePartialID(x, y, z uint16) uint32 {
+	var out uint32
+	out |= uint32(z)
+	out |= uint32(y) << 10
+	out |= uint32(x) << 20
+	return out
+}
+
+func (p page) addToDB() bool {
+    id1 := pagePartialID(p.ulhc.id(), p.urhc.id(), p.lrhc.id())
+    id2 := pagePartialID(p.urhc.id(), p.lrhc.id(), p.llhc.id())
+    id3 := pagePartialID(p.lrhc.id(), p.llhc.id(), p.ulhc.id())
+    id4 := pagePartialID(p.llhc.id(), p.ulhc.id(), p.urhc.id())
+    if _, ok := pageDB[id1]; ok {
+        return false
+    }
+    if _, ok := pageDB[id2]; ok {
+        return false
+    }
+    if _, ok := pageDB[id3]; ok {
+        return false
+    }
+    if _, ok := pageDB[id4]; ok {
+        return false
+    }
+    p.id = pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
+    pageDB[id1] = p
+    pageDB[id2] = p
+    pageDB[id3] = p
+    pageDB[id4] = p
+    return true
 }
 
 type dot struct {

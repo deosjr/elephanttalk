@@ -100,7 +100,7 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 			if ref != nil {
 				closeEnough := false
 				for _, refC := range ref {
-					if colorDistance(c, refC) < 15000 {
+					if colorDistance(c, refC) < 20000 {
 						closeEnough = true
 					}
 				}
@@ -165,7 +165,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 		// TODO: this is cheating, will work for now
 		// deduplication due to overlapping detection regions
-		cornersByTop := map[image.Point]corner{}
+		cornersByTop := map[point]corner{}
+        corners := []corner{}
 
 		// find corners
 		for k, v := range spatialPartition {
@@ -173,6 +174,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			if !ok {
 				continue
 			}
+            if _, ok := cornersByTop[corner.m.p]; ok {
+                // dont care if this corner is detected in multiple overlapping regions
+                continue
+            }
+
 			gocv.Rectangle(&img, k, red, 2)
 			gocv.Line(&img, corner.m.p.toIntPt(), corner.ll.p.toIntPt(), blue, 2)
 			gocv.Line(&img, corner.m.p.toIntPt(), corner.rr.p.toIntPt(), blue, 2)
@@ -194,14 +200,12 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			gocv.Circle(&img, corner.r.p.toIntPt(), 8, cs[int(corner.r.c)], -1)
 			gocv.Circle(&img, corner.rr.p.toIntPt(), 8, cs[int(corner.rr.c)], -1)
 
-			cornersByTop[corner.m.p.toIntPt()] = corner
+			cornersByTop[corner.m.p] = corner
+            corners = append(corners, corner)
 		}
 
-		corners := []corner{}
-		for _, c := range cornersByTop {
-			corners = append(corners, c)
-		}
-		cornerMap := map[corner]corner{}
+		cornersClockwise := map[corner]corner{}
+		cornersCounterClockwise := map[corner]corner{}
 		// compare each corner against all others (TODO: can be more efficient ofc)
 		// try to find another corner: the one clockwise in order that would form a page
 		for _, c := range corners {
@@ -212,103 +216,114 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				right := c.rr.p.sub(c.m.p)
 				toO := o.m.p.sub(c.m.p)
 				angle1 := angleBetween(right, toO)
+                if angle1 > 0.05 {
+                    continue
+                }
 				left := o.ll.p.sub(o.m.p)
 				toC := c.m.p.sub(o.m.p)
 				angle2 := angleBetween(left, toC)
-				if angle1 > 0.05 || angle2 > 0.05 {
+				if angle2 > 0.05 {
 					continue
 				}
-				prev, ok := cornerMap[c]
+				prev, ok := cornersClockwise[c]
 				if ok {
 					// overwrite previously found corner if this one is closer
 					if euclidian(c.m.p.sub(prev.m.p)) > euclidian(c.m.p.sub(o.m.p)) {
-						cornerMap[c] = o
+						cornersClockwise[c] = o
+						cornersCounterClockwise[o] = c
 					}
 				} else {
-					cornerMap[c] = o
+					cornersClockwise[c] = o
+					cornersCounterClockwise[o] = c
 				}
-				break
 			}
 		}
 
 		// parse corners into pages
-		pages := []page{}
-		for len(cornerMap) > 0 {
-			// pick a random starting corner from the map
-			var c, next corner
-			for k, v := range cornerMap {
-				c, next = k, v
-				break
-			}
-			delete(cornerMap, c)
+        pages := map[uint64]page{}
+		for len(corners) > 0 {
+            c := corners[0]
+            next := cornersClockwise[c]
+            corners = corners[1:]
+
 			cs := []corner{c, next}
-			// TODO: only picking perfect info pages atm, ie. those with 4 corners recognized
+			// only picking potential pages, those with at least 3 corners recognised
 			for i := 0; i < 3; i++ {
-				n, ok := cornerMap[next]
+				n, ok := cornersClockwise[next]
 				if !ok {
 					break
 				}
-				delete(cornerMap, next)
 				cs = append(cs, n)
 				c, next = next, n
 			}
-			if len(cs) != 5 || cs[0].m.p != cs[4].m.p {
+			if !(len(cs) == 3) && !(len(cs) == 5 && cs[0].m.p == cs[4].m.p) {
+                // either we have 3 corners, or we have 5 since the last one is guaranteed to point at the first
 				continue
 			}
 			// because cs[0] = cs[4], remove one instance of that corner
-			cs = cs[:4]
-			sortCorners(cs)
-			// naive: shift up to 4 times to try and find a valid page
-			p := page{ulhc: cs[0], urhc: cs[1], llhc: cs[2], lrhc: cs[3]}
-			for i := 0; i < 4; i++ {
-				pID := pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
-				p.id = pID
-				pp, ok := pageDB[pID]
-				if !ok {
-					p.ulhc, p.urhc, p.lrhc, p.llhc = p.urhc, p.lrhc, p.llhc, p.ulhc
-					continue
-				}
-				p.code = pp.code
-				rightArm := p.ulhc.rr.p.sub(p.ulhc.m.p)
-				rightAbs := p.ulhc.m.p.add(point{100, 0}).sub(p.ulhc.m.p)
-				angle := angleBetween(rightArm, rightAbs)
-				if p.ulhc.rr.p.y < p.ulhc.m.p.y {
-					angle = 2*math.Pi - angle
-				}
-				p.angle = angle
-				pages = append(pages, p)
+            if len(cs) == 5 {
+			    cs = cs[:4]
+            }
 
-				// Clockwise from upper left hand corner
-				pts := []point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
-				center := pts[0].add(pts[1]).add(pts[2]).add(pts[3]).div(4)
-				r := ptsToRect([]point{
-					rotateAround(center, pts[0], angle),
-					rotateAround(center, pts[1], angle),
-					rotateAround(center, pts[2], angle),
-					rotateAround(center, pts[3], angle),
-				})
-				gocv.Rectangle(&img, r, green, 2)
-
-				aabb := ptsToRect(pts)
-				gocv.Rectangle(&img, aabb, blue, 2)
-
-                // in lisp we store the points already translated to beamerspace instead of webcamspace
-                // NOTE: this means distances between papers in inches should use a conversion as well!
-                for i, pt := range pts {
-                    pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
-                }
-
-				lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
-				dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
-                    ('id %d)
-                    ('points %s)
-                    ('angle %f)
-                    ('code %q)
-                )`, p.id, lisppoints, p.angle, p.code))
-				pageDatalogIDs[pID] = int(dlID.AsNumber())
-				pageIDsDatalog[int(dlID.AsNumber())] = pID
-				break
+			pID := pagePartialID(cs[0].id(), cs[1].id(), cs[2].id())
+			p, ok := pageDB[pID]
+			if !ok {
+				continue
 			}
+            if _, ok := pages[p.id]; ok {
+                continue
+            }
+            if len(cs) == 3 {
+                missingMid := cs[2].m.p.add(cs[0].m.p.sub(cs[1].m.p))
+                // TODO: fill in missing colors and dots from page definition?
+                missingCorner := corner{m: dot{p:missingMid}}
+                cs = append(cs, missingCorner)
+            }
+            for i:=0; i<4; i++ {
+                if cs[0].id() == p.ulhc.id() {
+                    break
+                }
+                cs = []corner{cs[1], cs[2], cs[3], cs[0]}
+            }
+            p.ulhc, p.urhc, p.lrhc, p.llhc = cs[0], cs[1], cs[2], cs[3]
+			rightArm := p.ulhc.rr.p.sub(p.ulhc.m.p)
+			rightAbs := p.ulhc.m.p.add(point{100, 0}).sub(p.ulhc.m.p)
+			angle := angleBetween(rightArm, rightAbs)
+			if p.ulhc.rr.p.y < p.ulhc.m.p.y {
+				angle = 2*math.Pi - angle
+			}
+			p.angle = angle
+			pages[p.id] = p
+
+			// Clockwise from upper left hand corner
+			pts := []point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
+			center := pts[0].add(pts[1]).add(pts[2]).add(pts[3]).div(4)
+			r := ptsToRect([]point{
+				rotateAround(center, pts[0], angle),
+				rotateAround(center, pts[1], angle),
+				rotateAround(center, pts[2], angle),
+				rotateAround(center, pts[3], angle),
+			})
+			gocv.Rectangle(&img, r, green, 2)
+
+			aabb := ptsToRect(pts)
+			gocv.Rectangle(&img, aabb, blue, 2)
+
+            // in lisp we store the points already translated to beamerspace instead of webcamspace
+            // NOTE: this means distances between papers in inches should use a conversion as well!
+            for i, pt := range pts {
+                pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+            }
+
+			lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
+			dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
+                ('id %d)
+                ('points %s)
+                ('angle %f)
+                ('code %q)
+            )`, p.id, lisppoints, p.angle, p.code))
+			pageDatalogIDs[p.id] = int(dlID.AsNumber())
+			pageIDsDatalog[int(dlID.AsNumber())] = p.id
 		}
 
         // TODO for testing purposes, this page always counts as recognized
@@ -383,7 +398,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
         pageDB[42] = testpage
         pageDatalogIDs[42] = 0
         pageIDsDatalog[0] = 42
-        pages = append(pages, testpage)
+        pages[42] = testpage
 
 		for _, page := range pages {
 			// v1 of claim/wish/when

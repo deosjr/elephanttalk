@@ -83,16 +83,6 @@ func sortCirclesAsCorners(circles []circle) {
 	}
 }
 
-// same thing
-func sortCorners(corners []corner) {
-	sort.Slice(corners, func(i, j int) bool {
-		return corners[i].m.p.x+corners[i].m.p.y < corners[j].m.p.x+corners[j].m.p.y
-	})
-	if corners[1].m.p.y > corners[2].m.p.y {
-		corners[1], corners[2] = corners[2], corners[1]
-	}
-}
-
 func circlesMidpoint(circles []circle) point {
 	mid := circles[0].mid
 	for _, c := range circles[1:] {
