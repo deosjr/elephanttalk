@@ -5,7 +5,7 @@ import (
 	"image/color"
     "math"
 
-	"github.com/deosjr/lispadventures/lisp"
+	"github.com/deosjr/whistle/lisp"
 	"gocv.io/x/gocv"
 )
 

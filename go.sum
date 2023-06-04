@@ -1,13 +1,5 @@
-github.com/deosjr/lispadventures v0.0.0-20230506154713-c87f54cf0ae9 h1:UlK6lMctBHWOSC2IFKTlXru9q459TVPB97H3FBImSNc=
-github.com/deosjr/lispadventures v0.0.0-20230506154713-c87f54cf0ae9/go.mod h1:IZOfb5MkERRgc1H4usnfIQj3G1YS+m3HGVUNxhESE/w=
-github.com/deosjr/lispadventures v0.0.0-20230521141712-e863e779c15a h1:6v0a3NO6ltLqa3HVuWVFJY0o9n5F/grMBT3tzHdx77g=
-github.com/deosjr/lispadventures v0.0.0-20230521141712-e863e779c15a/go.mod h1:IZOfb5MkERRgc1H4usnfIQj3G1YS+m3HGVUNxhESE/w=
-github.com/deosjr/lispadventures v0.0.0-20230522162213-7f3e47f9d662 h1:T6ua8SOaBj4CsHnQFzzOYlzCmhfhkffkscb5e+rAoK8=
-github.com/deosjr/lispadventures v0.0.0-20230522162213-7f3e47f9d662/go.mod h1:IZOfb5MkERRgc1H4usnfIQj3G1YS+m3HGVUNxhESE/w=
-github.com/deosjr/lispadventures v0.0.0-20230523184856-112587a38b15 h1:bCRHFt2pzwfs2CY15hGHgH0Ih8Wc11RNevDrcmRSJq0=
-github.com/deosjr/lispadventures v0.0.0-20230523184856-112587a38b15/go.mod h1:IZOfb5MkERRgc1H4usnfIQj3G1YS+m3HGVUNxhESE/w=
-github.com/deosjr/lispadventures v0.0.0-20230525140524-9091eb824d4f h1:6J6JjbDn1zee0VQll4mEkWHpIHek3oeqCwc7niqFHrA=
-github.com/deosjr/lispadventures v0.0.0-20230525140524-9091eb824d4f/go.mod h1:IZOfb5MkERRgc1H4usnfIQj3G1YS+m3HGVUNxhESE/w=
+github.com/deosjr/whistle v0.0.0-20230603075734-1dc18394c635 h1:BvMErYC4GXUlYmVfBWGFHe1E5cp6uS+Sg5o+A7QnENg=
+github.com/deosjr/whistle v0.0.0-20230603075734-1dc18394c635/go.mod h1:AqJExKTUYXaa+5DDBu0J+d4ajZbabQEiafNepi/Jwvk=
 github.com/pascaldekloe/goe v0.1.0/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 gocv.io/x/gocv v0.27.0 h1:3X8I74ULsWHd4m7DQRv2Nqx5VkKscfUFnKgLNodiboI=
 gocv.io/x/gocv v0.27.0/go.mod h1:n4LnYjykU6y9gn48yZf4eLCdtuSb77XxSkW6g0wGf/A=
