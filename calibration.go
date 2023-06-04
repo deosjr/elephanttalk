@@ -60,10 +60,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			}
 			sortCirclesAsCorners(v)
 			gocv.Rectangle(&img, k, red, 2)
-            r := image.Rectangle{
-                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
-                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
-            }
+			r := image.Rectangle{
+				v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+				v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+			}
 			gocv.Rectangle(&img, r, blue, 2)
 
 			// TODO: draw indicators for horizontal/vertical align
@@ -134,10 +134,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			}
 			sortCirclesAsCorners(v)
 			gocv.Rectangle(&img, k, red, 2)
-            r := image.Rectangle{
-                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
-                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
-            }
+			r := image.Rectangle{
+				v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+				v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+			}
 			gocv.Rectangle(&img, r, blue, 2)
 
 			midpoint := circlesMidpoint(v)
@@ -179,10 +179,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			// unless ofc lighting changes drastically
 
 			gocv.Rectangle(&img, k, red, 2)
-            r := image.Rectangle{
-                v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
-                v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
-            }
+			r := image.Rectangle{
+				v[0].mid.add(point{-v[0].r, -v[0].r}).toIntPt(),
+				v[3].mid.add(point{v[3].r, v[3].r}).toIntPt(),
+			}
 			gocv.Rectangle(&img, r, blue, 2)
 
 			gocv.Circle(&img, v[0].mid.toIntPt(), int(v[0].r), red, 2)
@@ -197,7 +197,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 			midpoint := circlesMidpoint(v)
 			min := midpoint.add(point{-a4wpx, -a4hpx})
 			max := midpoint.add(point{a4wpx, a4hpx})
-            a4 := image.Rectangle{min.toIntPt(), max.toIntPt()}
+			a4 := image.Rectangle{min.toIntPt(), max.toIntPt()}
 			gocv.Rectangle(&img, a4, blue, 4)
 
 			// adjust for displacement and display ratio

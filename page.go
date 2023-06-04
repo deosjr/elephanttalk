@@ -19,7 +19,7 @@ var cielabBlue = color.RGBA{57, 16, 133, 0}
 var cielabYellow = color.RGBA{250, 140, 22, 0}
 
 type page struct {
-    id                     uint64
+	id                     uint64
 	ulhc, urhc, lrhc, llhc corner
 	angle                  float64
 	code                   string
@@ -71,28 +71,28 @@ func pagePartialID(x, y, z uint16) uint32 {
 }
 
 func (p page) addToDB() bool {
-    id1 := pagePartialID(p.ulhc.id(), p.urhc.id(), p.lrhc.id())
-    id2 := pagePartialID(p.urhc.id(), p.lrhc.id(), p.llhc.id())
-    id3 := pagePartialID(p.lrhc.id(), p.llhc.id(), p.ulhc.id())
-    id4 := pagePartialID(p.llhc.id(), p.ulhc.id(), p.urhc.id())
-    if _, ok := pageDB[id1]; ok {
-        return false
-    }
-    if _, ok := pageDB[id2]; ok {
-        return false
-    }
-    if _, ok := pageDB[id3]; ok {
-        return false
-    }
-    if _, ok := pageDB[id4]; ok {
-        return false
-    }
-    p.id = pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
-    pageDB[id1] = p
-    pageDB[id2] = p
-    pageDB[id3] = p
-    pageDB[id4] = p
-    return true
+	id1 := pagePartialID(p.ulhc.id(), p.urhc.id(), p.lrhc.id())
+	id2 := pagePartialID(p.urhc.id(), p.lrhc.id(), p.llhc.id())
+	id3 := pagePartialID(p.lrhc.id(), p.llhc.id(), p.ulhc.id())
+	id4 := pagePartialID(p.llhc.id(), p.ulhc.id(), p.urhc.id())
+	if _, ok := pageDB[id1]; ok {
+		return false
+	}
+	if _, ok := pageDB[id2]; ok {
+		return false
+	}
+	if _, ok := pageDB[id3]; ok {
+		return false
+	}
+	if _, ok := pageDB[id4]; ok {
+		return false
+	}
+	p.id = pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
+	pageDB[id1] = p
+	pageDB[id2] = p
+	pageDB[id3] = p
+	pageDB[id4] = p
+	return true
 }
 
 type dot struct {
@@ -173,7 +173,7 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 	v = []circle{end1, mid1, top, mid2, end2}
 
 	// midpoint test
-    midpoint := circlesMidpoint(v)
+	midpoint := circlesMidpoint(v)
 
 	sortedDistances := []float64{}
 	for _, p := range v {
@@ -232,20 +232,20 @@ func findCorners(v []circle, ref []color.RGBA) (corner, bool) {
 				colors[i] = dotColor(j)
 			}
 		}
-	    rr, gg, bb, _ := sample.RGBA()
-        rr = rr >> 8
-        gg = gg >> 8
-        bb = bb >> 8
-        switch {
-        case rr < 80 && gg < 80 && bb < 80:
-            colors[i] = blueDot
-        case gg > rr && gg > bb:
-            colors[i] = greenDot
-        case rr > 2*gg && gg > bb+20:
-            colors[i] = yellowDot
-        case rr > 2*gg && rr > 3*bb:
-            colors[i] = redDot
-        }
+		rr, gg, bb, _ := sample.RGBA()
+		rr = rr >> 8
+		gg = gg >> 8
+		bb = bb >> 8
+		switch {
+		case rr < 80 && gg < 80 && bb < 80:
+			colors[i] = blueDot
+		case gg > rr && gg > bb:
+			colors[i] = greenDot
+		case rr > 2*gg && gg > bb+20:
+			colors[i] = yellowDot
+		case rr > 2*gg && rr > 3*bb:
+			colors[i] = redDot
+		}
 	}
 	return corner{
 		ll: dot{p: left.mid, c: colors[0]},

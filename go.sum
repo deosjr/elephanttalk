@@ -1,5 +1,7 @@
 github.com/deosjr/whistle v0.0.0-20230603075734-1dc18394c635 h1:BvMErYC4GXUlYmVfBWGFHe1E5cp6uS+Sg5o+A7QnENg=
 github.com/deosjr/whistle v0.0.0-20230603075734-1dc18394c635/go.mod h1:AqJExKTUYXaa+5DDBu0J+d4ajZbabQEiafNepi/Jwvk=
+github.com/deosjr/whistle v0.0.0-20230604162944-34851f1db745 h1:TLicDWljBcTIBOVRUHqWiIj8+qCpeL2NGPRlfBQEkG0=
+github.com/deosjr/whistle v0.0.0-20230604162944-34851f1db745/go.mod h1:AqJExKTUYXaa+5DDBu0J+d4ajZbabQEiafNepi/Jwvk=
 github.com/pascaldekloe/goe v0.1.0/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 gocv.io/x/gocv v0.27.0 h1:3X8I74ULsWHd4m7DQRv2Nqx5VkKscfUFnKgLNodiboI=
 gocv.io/x/gocv v0.27.0/go.mod h1:n4LnYjykU6y9gn48yZf4eLCdtuSb77XxSkW6g0wGf/A=

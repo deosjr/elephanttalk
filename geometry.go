@@ -8,23 +8,23 @@ import (
 )
 
 type point struct {
-    x, y float64
+	x, y float64
 }
 
 func (p point) add(q point) point {
-    return point{p.x+q.x, p.y+q.y}
+	return point{p.x + q.x, p.y + q.y}
 }
 
 func (p point) sub(q point) point {
-    return point{p.x-q.x, p.y-q.y}
+	return point{p.x - q.x, p.y - q.y}
 }
 
 func (p point) div(n float64) point {
-    return point{p.x/n, p.y/n}
+	return point{p.x / n, p.y / n}
 }
 
 func (p point) toIntPt() image.Point {
-    return image.Pt(int(p.x), int(p.y))
+	return image.Pt(int(p.x), int(p.y))
 }
 
 type circle struct {
@@ -41,13 +41,13 @@ func translate(p, delta point, ratio float64) point {
 	// first we add the difference from webcam to beamer midpoints
 	q := p.add(delta)
 	// then we boost from midpoint by missing ratio
-	beamerMid := point{float64(beamerWidth)/2., float64(beamerHeight)/2.}
+	beamerMid := point{float64(beamerWidth) / 2., float64(beamerHeight) / 2.}
 	deltaV := q.sub(beamerMid)
-    factor := 0.
-    if ratio != 0 {
-        factor = (1./ratio)-1.
-    }
-	adjust := point{deltaV.x*factor, deltaV.y*factor}
+	factor := 0.
+	if ratio != 0 {
+		factor = (1. / ratio) - 1.
+	}
+	adjust := point{deltaV.x * factor, deltaV.y * factor}
 	return q.add(adjust)
 }
 
@@ -63,7 +63,7 @@ func rotateAround(pivot, p point, radians float64) point {
 
 	xNew := (c*x - s*y) + pivot.x
 	yNew := (s*x + c*y) + pivot.y
-    return point{xNew, yNew}
+	return point{xNew, yNew}
 }
 
 func angleBetween(u, v point) float64 {
@@ -98,8 +98,8 @@ func ptsToRect(pts []point) image.Rectangle {
 	}
 	for _, p := range pts {
 		r = r.Union(image.Rectangle{
-		    p.add(point{-1, -1}).toIntPt(),
-		    p.add(point{1, 1}).toIntPt(),
+			p.add(point{-1, -1}).toIntPt(),
+			p.add(point{1, 1}).toIntPt(),
 		})
 	}
 	return r
@@ -109,8 +109,8 @@ func ptsToRect(pts []point) image.Rectangle {
 func colorDistance(sample, reference color.Color) float64 {
 	rr, gg, bb, _ := sample.RGBA()
 	refR, refG, refB, _ := reference.RGBA()
-	dR := float64(rr >> 8) - float64(refR >> 8)
-	dG := float64(gg >> 8) - float64(refG >> 8)
-	dB := float64(bb >> 8) - float64(refB >> 8)
+	dR := float64(rr>>8) - float64(refR>>8)
+	dG := float64(gg>>8) - float64(refG>>8)
+	dB := float64(bb>>8) - float64(refB>>8)
 	return dR*dR + dG*dG + dB*dB
 }

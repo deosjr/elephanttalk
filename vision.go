@@ -7,6 +7,8 @@ import (
 	"math"
 	"time"
 
+	"github.com/deosjr/whistle/datalog"
+	"github.com/deosjr/whistle/kanren"
 	"github.com/deosjr/whistle/lisp"
 	"gocv.io/x/gocv"
 )
@@ -112,7 +114,7 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 			mid := image.Pt(int(x), int(y))
 			for rect, list := range spatialPartition {
 				if mid.In(rect) {
-					spatialPartition[rect] = append(list, circle{point{x,y}, r, c})
+					spatialPartition[rect] = append(list, circle{point{x, y}, r, c})
 				}
 			}
 
@@ -130,6 +132,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	defer cimg.Close()
 
 	l := lisp.New()
+	kanren.Load(l)
+	datalog.Load(l)
 	LoadRealTalk(l)
 
 	fi := frameInput{
@@ -140,13 +144,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		cimg:        cimg,
 	}
 
-    // ttl in frames; essentially buffering page location for flaky detection
-    type persistPage struct {
-        id  uint64
-        ttl int
-    }
+	// ttl in frames; essentially buffering page location for flaky detection
+	type persistPage struct {
+		id  uint64
+		ttl int
+	}
 
-    persistCorners := map[corner]persistPage{}
+	persistCorners := map[corner]persistPage{}
 
 	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
 		// clear datalog dbs
@@ -159,13 +163,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		pageDatalogIDs := map[uint64]int{}
 		pageIDsDatalog := map[int]uint64{}
 
-        for k, v := range persistCorners {
-            if v.ttl == 0 {
-                delete(persistCorners, k)
-                continue
-            }
-            persistCorners[k] = persistPage{v.id, v.ttl-1}
-        }
+		for k, v := range persistCorners {
+			if v.ttl == 0 {
+				delete(persistCorners, k)
+				continue
+			}
+			persistCorners[k] = persistPage{v.id, v.ttl - 1}
+		}
 
 		gocv.Circle(&img, image.Pt(5, 5), 5, cResults.referenceColors[0], -1)
 		gocv.Circle(&img, image.Pt(15, 5), 5, cResults.referenceColors[1], -1)
@@ -182,7 +186,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		// TODO: this is cheating, will work for now
 		// deduplication due to overlapping detection regions
 		cornersByTop := map[point]corner{}
-        corners := []corner{}
+		corners := []corner{}
 
 		// find corners
 		for k, v := range spatialPartition {
@@ -190,10 +194,10 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			if !ok {
 				continue
 			}
-            if _, ok := cornersByTop[corner.m.p]; ok {
-                // dont care if this corner is detected in multiple overlapping regions
-                continue
-            }
+			if _, ok := cornersByTop[corner.m.p]; ok {
+				// dont care if this corner is detected in multiple overlapping regions
+				continue
+			}
 
 			gocv.Rectangle(&img, k, red, 2)
 			gocv.Line(&img, corner.m.p.toIntPt(), corner.ll.p.toIntPt(), blue, 2)
@@ -217,25 +221,25 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			gocv.Circle(&img, corner.rr.p.toIntPt(), 8, cs[int(corner.rr.c)], -1)
 
 			cornersByTop[corner.m.p] = corner
-            corners = append(corners, corner)
+			corners = append(corners, corner)
 		}
 
-        // attempt to update corners if their colors dont match corner that was really close to it previous frame
-        // persisted corners are guaranteed to have matched an existing page
-        for i, c := range corners {
-            for o := range persistCorners {
-                if euclidian(c.m.p.sub(o.m.p)) < 5.0 {
-                    corners[i] = corner{
-                        ll: dot{c.ll.p, o.ll.c},
-                        l:  dot{c.l.p,  o.l.c},
-                        m:  dot{c.m.p,  o.m.c},
-                        r:  dot{c.r.p,  o.r.c},
-                        rr: dot{c.rr.p, o.rr.c},
-                    }
-                    break
-                }
-            }
-        }
+		// attempt to update corners if their colors dont match corner that was really close to it previous frame
+		// persisted corners are guaranteed to have matched an existing page
+		for i, c := range corners {
+			for o := range persistCorners {
+				if euclidian(c.m.p.sub(o.m.p)) < 5.0 {
+					corners[i] = corner{
+						ll: dot{c.ll.p, o.ll.c},
+						l:  dot{c.l.p, o.l.c},
+						m:  dot{c.m.p, o.m.c},
+						r:  dot{c.r.p, o.r.c},
+						rr: dot{c.rr.p, o.rr.c},
+					}
+					break
+				}
+			}
+		}
 
 		cornersClockwise := map[corner]corner{}
 		cornersCounterClockwise := map[corner]corner{}
@@ -249,9 +253,9 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				right := c.rr.p.sub(c.m.p)
 				toO := o.m.p.sub(c.m.p)
 				angle1 := angleBetween(right, toO)
-                if angle1 > 0.05 {
-                    continue
-                }
+				if angle1 > 0.05 {
+					continue
+				}
 				left := o.ll.p.sub(o.m.p)
 				toC := c.m.p.sub(o.m.p)
 				angle2 := angleBetween(left, toC)
@@ -273,11 +277,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		}
 
 		// parse corners into pages
-        pages := map[uint64]page{}
+		pages := map[uint64]page{}
 		for len(corners) > 0 {
-            c := corners[0]
-            next := cornersClockwise[c]
-            corners = corners[1:]
+			c := corners[0]
+			next := cornersClockwise[c]
+			corners = corners[1:]
 
 			cs := []corner{c, next}
 			// only picking potential pages, those with at least 3 corners recognised
@@ -290,88 +294,88 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				c, next = next, n
 			}
 			if !(len(cs) == 3) && !(len(cs) == 5 && cs[0].m.p == cs[4].m.p) {
-                // either we have 3 corners, or we have 5 since the last one is guaranteed to point at the first
+				// either we have 3 corners, or we have 5 since the last one is guaranteed to point at the first
 				continue
 			}
 			// because cs[0] = cs[4], remove one instance of that corner
-            if len(cs) == 5 {
-			    cs = cs[:4]
-            }
+			if len(cs) == 5 {
+				cs = cs[:4]
+			}
 
-            // if we detect four corners but one is wrong, we should attempt getting page from other configurations
-            // if we detect only three, we attempt to find by those 3 corners only
-            var p page
-            if len(cs) == 3 {
-			    pID := pagePartialID(cs[0].id(), cs[1].id(), cs[2].id())
-			    pg, ok := pageDB[pID]
-			    if !ok {
-				    continue
-			    }
-                if _, ok := pages[p.id]; ok {
-                    continue
-                }
-                p = pg
-                missingMid := cs[2].m.p.add(cs[0].m.p.sub(cs[1].m.p))
-                // TODO: fill in missing dots positions on missing corner?
-                missingCorner := corner{m: dot{p:missingMid}}
-                cs = append(cs, missingCorner)
-            } else if len(cs) == 4 {
-                found := false
-                for i:=0; i<4; i++ {
-                    cs = []corner{cs[1], cs[2], cs[3], cs[0]}
-			        pID := pagePartialID(cs[0].id(), cs[1].id(), cs[2].id())
-			        pg, ok := pageDB[pID]
-			        if !ok {
-				        continue
-			        }
-                    if _, ok := pages[p.id]; ok {
-                        continue
-                    }
-                    p = pg
-                    found = true
-                    break
-                }
-                if !found {
-                    continue
-                }
-            }
-            for i:=0; i<4; i++ {
-                if cs[0].id() == p.ulhc.id() {
-                    break
-                }
-                cs = []corner{cs[1], cs[2], cs[3], cs[0]}
-            }
-            // error correct colors on corners because 1 might be wrong
-            // in which case we would persist wrong corner across frames and error correction will not work
-            //p.ulhc, p.urhc, p.lrhc, p.llhc = cs[0], cs[1], cs[2], cs[3]
-            p.ulhc = corner{
-                ll: dot{cs[0].ll.p, p.ulhc.ll.c},
-                l:  dot{cs[0].l.p,  p.ulhc.l.c},
-                m:  dot{cs[0].m.p,  p.ulhc.m.c},
-                r:  dot{cs[0].r.p,  p.ulhc.r.c},
-                rr: dot{cs[0].rr.p, p.ulhc.rr.c},
-            }
-            p.urhc = corner{
-                ll: dot{cs[1].ll.p, p.urhc.ll.c},
-                l:  dot{cs[1].l.p,  p.urhc.l.c},
-                m:  dot{cs[1].m.p,  p.urhc.m.c},
-                r:  dot{cs[1].r.p,  p.urhc.r.c},
-                rr: dot{cs[1].rr.p, p.urhc.rr.c},
-            }
-            p.lrhc = corner{
-                ll: dot{cs[2].ll.p, p.lrhc.ll.c},
-                l:  dot{cs[2].l.p,  p.lrhc.l.c},
-                m:  dot{cs[2].m.p,  p.lrhc.m.c},
-                r:  dot{cs[2].r.p,  p.lrhc.r.c},
-                rr: dot{cs[2].rr.p, p.lrhc.rr.c},
-            }
-            p.llhc = corner{
-                ll: dot{cs[3].ll.p, p.llhc.ll.c},
-                l:  dot{cs[3].l.p,  p.llhc.l.c},
-                m:  dot{cs[3].m.p,  p.llhc.m.c},
-                r:  dot{cs[3].r.p,  p.llhc.r.c},
-                rr: dot{cs[3].rr.p, p.llhc.rr.c},
-            }
+			// if we detect four corners but one is wrong, we should attempt getting page from other configurations
+			// if we detect only three, we attempt to find by those 3 corners only
+			var p page
+			if len(cs) == 3 {
+				pID := pagePartialID(cs[0].id(), cs[1].id(), cs[2].id())
+				pg, ok := pageDB[pID]
+				if !ok {
+					continue
+				}
+				if _, ok := pages[p.id]; ok {
+					continue
+				}
+				p = pg
+				missingMid := cs[2].m.p.add(cs[0].m.p.sub(cs[1].m.p))
+				// TODO: fill in missing dots positions on missing corner?
+				missingCorner := corner{m: dot{p: missingMid}}
+				cs = append(cs, missingCorner)
+			} else if len(cs) == 4 {
+				found := false
+				for i := 0; i < 4; i++ {
+					cs = []corner{cs[1], cs[2], cs[3], cs[0]}
+					pID := pagePartialID(cs[0].id(), cs[1].id(), cs[2].id())
+					pg, ok := pageDB[pID]
+					if !ok {
+						continue
+					}
+					if _, ok := pages[p.id]; ok {
+						continue
+					}
+					p = pg
+					found = true
+					break
+				}
+				if !found {
+					continue
+				}
+			}
+			for i := 0; i < 4; i++ {
+				if cs[0].id() == p.ulhc.id() {
+					break
+				}
+				cs = []corner{cs[1], cs[2], cs[3], cs[0]}
+			}
+			// error correct colors on corners because 1 might be wrong
+			// in which case we would persist wrong corner across frames and error correction will not work
+			//p.ulhc, p.urhc, p.lrhc, p.llhc = cs[0], cs[1], cs[2], cs[3]
+			p.ulhc = corner{
+				ll: dot{cs[0].ll.p, p.ulhc.ll.c},
+				l:  dot{cs[0].l.p, p.ulhc.l.c},
+				m:  dot{cs[0].m.p, p.ulhc.m.c},
+				r:  dot{cs[0].r.p, p.ulhc.r.c},
+				rr: dot{cs[0].rr.p, p.ulhc.rr.c},
+			}
+			p.urhc = corner{
+				ll: dot{cs[1].ll.p, p.urhc.ll.c},
+				l:  dot{cs[1].l.p, p.urhc.l.c},
+				m:  dot{cs[1].m.p, p.urhc.m.c},
+				r:  dot{cs[1].r.p, p.urhc.r.c},
+				rr: dot{cs[1].rr.p, p.urhc.rr.c},
+			}
+			p.lrhc = corner{
+				ll: dot{cs[2].ll.p, p.lrhc.ll.c},
+				l:  dot{cs[2].l.p, p.lrhc.l.c},
+				m:  dot{cs[2].m.p, p.lrhc.m.c},
+				r:  dot{cs[2].r.p, p.lrhc.r.c},
+				rr: dot{cs[2].rr.p, p.lrhc.rr.c},
+			}
+			p.llhc = corner{
+				ll: dot{cs[3].ll.p, p.llhc.ll.c},
+				l:  dot{cs[3].l.p, p.llhc.l.c},
+				m:  dot{cs[3].m.p, p.llhc.m.c},
+				r:  dot{cs[3].r.p, p.llhc.r.c},
+				rr: dot{cs[3].rr.p, p.llhc.rr.c},
+			}
 
 			rightArm := p.ulhc.rr.p.sub(p.ulhc.m.p)
 			rightAbs := p.ulhc.m.p.add(point{100, 0}).sub(p.ulhc.m.p)
@@ -382,12 +386,12 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			p.angle = angle
 			pages[p.id] = p
 
-            // persist this page across frames
-            pagePersist := persistPage{id: p.id, ttl: 10}
-            persistCorners[p.ulhc] = pagePersist
-            persistCorners[p.urhc] = pagePersist
-            persistCorners[p.lrhc] = pagePersist
-            persistCorners[p.llhc] = pagePersist
+			// persist this page across frames
+			pagePersist := persistPage{id: p.id, ttl: 10}
+			persistCorners[p.ulhc] = pagePersist
+			persistCorners[p.urhc] = pagePersist
+			persistCorners[p.lrhc] = pagePersist
+			persistCorners[p.llhc] = pagePersist
 
 			// Clockwise from upper left hand corner
 			pts := []point{p.ulhc.m.p, p.urhc.m.p, p.lrhc.m.p, p.llhc.m.p}
@@ -403,11 +407,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			aabb := ptsToRect(pts)
 			gocv.Rectangle(&img, aabb, blue, 2)
 
-            // in lisp we store the points already translated to beamerspace instead of webcamspace
-            // NOTE: this means distances between papers in inches should use a conversion as well!
-            for i, pt := range pts {
-                pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
-            }
+			// in lisp we store the points already translated to beamerspace instead of webcamspace
+			// NOTE: this means distances between papers in inches should use a conversion as well!
+			for i, pt := range pts {
+				pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+			}
 
 			lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
 			dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
@@ -420,12 +424,12 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			pageIDsDatalog[int(dlID.AsNumber())] = p.id
 		}
 
-        // TODO for testing purposes, this page always counts as recognized
-        // TODO: add back possibility to write text under rotation
-        testpage := page{
-            id: 42,
-            code: `(begin
-            (-- should be counterclockwise, somehow isnt; fixed for now by negating angle --)
+		// TODO for testing purposes, this page always counts as recognized
+		// TODO: add back possibility to write text under rotation
+		testpage := page{
+			id: 42,
+			code: `(begin
+            #| should be counterclockwise, somehow isnt; fixed for now by negating angle |# 
             (define rotateAround (lambda (pivot point angle)
               (let ((s (sin (- 0 angle)))
                     (c (cos (- 0 angle)))
@@ -444,6 +448,14 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                 (+ (car p) (car q))
                 (+ (cdr p) (cdr q)))))
 
+            (define point-sub (lambda (p q)
+              (cons
+                (- (car p) (car q))
+                (- (cdr p) (cdr q)))))
+
+            (define point-mul (lambda (p n)
+              (cons (* (car p) n) (* (cdr p) n))))
+
             (define point-div (lambda (p n)
               (cons (/ (car p) n) (/ (cdr p) n))))
 
@@ -454,11 +466,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
               (let ((rects (map (lambda (p)
                 (let ((min (point-add p (cons -1 -1))) (max (point-add p (cons 1 1))))
                   (make-rectangle (car min) (cdr min) (car max) (cdr max)))) points)))
-                    (-- (foldl rects rect:union (car rects)) --)
+                    #| (foldl rects rect:union (car rects)) |#
                     (rect:union (rect:union (rect:union (car rects) (car (cdr rects))) (car (cdr (cdr rects)))) (car (cdr (cdr (cdr rects)))))
                    )))
 
-            (-- TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? --)
+            #| TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? |# 
 
             (when ((highlighted ,?page ,?color) ((page points) ,?page ,?points) ((page angle) ,?page ,?angle)) do
                 (let ((center (midpoint (quote ,?points)))
@@ -466,9 +478,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                       (illu (make-illumination)))
                   (let ((rotated (map (lambda (p) (rotateAround center p ,?angle)) (quote ,?points)))
                         (m (gocv:rotation_matrix2D (car center) (cdr center) unangle 1.0)))
-                    (gocv:rect illu (points->rect rotated) ,?color -1)
+                    #| TODO: make p->center a unit vector, add in projector-space inches instead of a percentage |#
+                    (define inset (lambda (p) (point-add p (point-mul (point-sub center p) 0.2))))
+                    (gocv:rect illu (points->rect (map inset rotated)) ,?color -1)
                     (gocv:text illu "TEST" (point2d (car center) (cdr center)) 0.5 green 2)
-                    (-- might not work because it doesnt support inplace --)
+                    #| might not work because it doesnt support inplace |#
                     (gocv:warp_affine illu illu m 1280 720)
                     (claim ,?page 'has-illumination 'illu))))
 
@@ -488,11 +502,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
                       (gocv:line illu lrhc llhc ,?color 5)
                       (gocv:line illu llhc ulhc ,?color 5)))))
             )`,
-        }
-        pageDB[42] = testpage
-        pageDatalogIDs[42] = 0
-        pageIDsDatalog[0] = 42
-        pages[42] = testpage
+		}
+		pageDB[42] = testpage
+		pageDatalogIDs[42] = 0
+		pageIDsDatalog[0] = 42
+		pages[42] = testpage
 
 		for _, page := range pages {
 			// v1 of claim/wish/when
@@ -525,11 +539,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			highlightIDs[pageIDsDatalog[id]] = struct{}{}
 		}
 
-        for _, illu := range illus {
+		for _, illu := range illus {
 			blit(&illu, &cimg)
-            illu.Close()
-        }
-        illus = []gocv.Mat{}
+			illu.Close()
+		}
+		illus = []gocv.Mat{}
 
 	}, cResults.referenceColors, 10); err != nil {
 		fmt.Println(err)

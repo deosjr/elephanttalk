@@ -31,30 +31,30 @@ func main() {
 		}
 	}
 	//page1
-    page{
-	    ulhc: cornerShorthand("ygybr"),
-	    urhc: cornerShorthand("brgry"),
-	    lrhc: cornerShorthand("gbgyg"),
-	    llhc: cornerShorthand("bgryy"),
-	    code: `(claim this 'outlined 'blue)`,
-    }.addToDB()
+	page{
+		ulhc: cornerShorthand("ygybr"),
+		urhc: cornerShorthand("brgry"),
+		lrhc: cornerShorthand("gbgyg"),
+		llhc: cornerShorthand("bgryy"),
+		code: `(claim this 'outlined 'blue)`,
+	}.addToDB()
 	//pageDB[id] = page{id: id, code: `(claim this 'is-a 'window)`}
 
 	//page2
-    page{
-	    ulhc: cornerShorthand("yggyg"),
-	    urhc: cornerShorthand("rgyrb"),
-	    lrhc: cornerShorthand("bybbg"),
-	    llhc: cornerShorthand("brgrg"),
-	    // TODO: when someone wishes... should be a third 'engine' page
-	    // that instead of claiming actually calculates illumination and wishes
-	    code: `(claim this 'highlighted 'red)`,
-    }.addToDB()
+	page{
+		ulhc: cornerShorthand("yggyg"),
+		urhc: cornerShorthand("rgyrb"),
+		lrhc: cornerShorthand("bybbg"),
+		llhc: cornerShorthand("brgrg"),
+		// TODO: when someone wishes... should be a third 'engine' page
+		// that instead of claiming actually calculates illumination and wishes
+		code: `(claim this 'highlighted 'red)`,
+	}.addToDB()
 	/*
-		pageDB[id] = page{id: id, code: `(begin
-	        (when (is-a ,?page window) do (wish (,?page highlighted blue)))
-	        (when ,?someone wishes (,?page highlighted ,?color) do (claim ,?page 'highlighted ,?color))
-	    )`}
+			pageDB[id] = page{id: id, code: `(begin
+		        (when (is-a ,?page window) do (wish (,?page highlighted blue)))
+		        (when ,?someone wishes (,?page highlighted ,?color) do (claim ,?page 'highlighted ,?color))
+		    )`}
 	*/
 	// TODO: new page that wishes red instead of blue, show highlighting changes
 
