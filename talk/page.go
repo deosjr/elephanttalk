@@ -1,4 +1,4 @@
-package main
+package talk
 
 import (
 	"image"
@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+    "strings"
 	"time"
 
 	"gocv.io/x/gocv"
@@ -23,6 +24,18 @@ type page struct {
 	ulhc, urhc, lrhc, llhc corner
 	angle                  float64
 	code                   string
+}
+
+// AddPageFromShorthand lets you add a page to the database when you already know its corners
+// used while the database doesnt persist across sessions, so we dont print new pages all the time
+func AddPageFromShorthand(ulhc, urhc, lrhc, llhc, code string) bool {
+    return addToDB(page{
+        ulhc: cornerShorthand(ulhc),
+        urhc: cornerShorthand(urhc),
+        llhc: cornerShorthand(llhc),
+        lrhc: cornerShorthand(lrhc),
+        code: code,
+    })
 }
 
 // to define left and right under rotation:
@@ -70,29 +83,15 @@ func pagePartialID(x, y, z uint16) uint32 {
 	return out
 }
 
-func (p page) addToDB() bool {
-	id1 := pagePartialID(p.ulhc.id(), p.urhc.id(), p.lrhc.id())
-	id2 := pagePartialID(p.urhc.id(), p.lrhc.id(), p.llhc.id())
-	id3 := pagePartialID(p.lrhc.id(), p.llhc.id(), p.ulhc.id())
-	id4 := pagePartialID(p.llhc.id(), p.ulhc.id(), p.urhc.id())
-	if _, ok := pageDB[id1]; ok {
-		return false
+func cornerShorthand(debug string) corner {
+	s := "rgby"
+	return corner{
+		ll: dot{c: dotColor(strings.IndexRune(s, rune(debug[0])))},
+		l:  dot{c: dotColor(strings.IndexRune(s, rune(debug[1])))},
+		m:  dot{c: dotColor(strings.IndexRune(s, rune(debug[2])))},
+		r:  dot{c: dotColor(strings.IndexRune(s, rune(debug[3])))},
+		rr: dot{c: dotColor(strings.IndexRune(s, rune(debug[4])))},
 	}
-	if _, ok := pageDB[id2]; ok {
-		return false
-	}
-	if _, ok := pageDB[id3]; ok {
-		return false
-	}
-	if _, ok := pageDB[id4]; ok {
-		return false
-	}
-	p.id = pageID(p.ulhc.id(), p.urhc.id(), p.lrhc.id(), p.llhc.id())
-	pageDB[id1] = p
-	pageDB[id2] = p
-	pageDB[id3] = p
-	pageDB[id4] = p
-	return true
 }
 
 type dot struct {

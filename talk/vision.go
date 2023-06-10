@@ -1,4 +1,4 @@
-package main
+package talk
 
 import (
 	"fmt"
@@ -7,11 +7,43 @@ import (
 	"math"
 	"time"
 
+	"github.com/deosjr/elephanttalk/opencv"
 	"github.com/deosjr/whistle/datalog"
 	"github.com/deosjr/whistle/kanren"
 	"github.com/deosjr/whistle/lisp"
 	"gocv.io/x/gocv"
 )
+
+var (
+	// detected from webcam output instead!
+	//webcamWidth, webcamHeight = 1280, 720
+	beamerWidth, beamerHeight = 1280, 720
+)
+
+func Run() {
+	webcam, err := gocv.VideoCaptureDevice(0)
+	if err != nil {
+		panic(err)
+	}
+	defer webcam.Close()
+
+	debugwindow := gocv.NewWindow("debug")
+	defer debugwindow.Close()
+	projection := gocv.NewWindow("projector")
+	defer projection.Close()
+
+	cResults := calibration(webcam, debugwindow, projection)
+	fmt.Println(cResults)
+	/*
+		cResults := calibrationResults{
+			pixelsPerCM:     8.33666,
+			displacement:    image.Pt(93, 0),
+			displayRatio:    0.93,
+			referenceColors: []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}},
+		}
+	*/
+	vision(webcam, debugwindow, projection, cResults)
+}
 
 type frameInput struct {
 	webcam      *gocv.VideoCapture
@@ -44,7 +76,6 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle),
 		fi.projection.IMShow(fi.cimg)
 		key := fi.debugWindow.WaitKey(waitMillis)
 		if key >= 0 {
-			fmt.Println(key)
 			return nil
 		}
 	}
@@ -425,7 +456,6 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		}
 
 		// TODO for testing purposes, this page always counts as recognized
-		// TODO: add back possibility to write text under rotation
 		testpage := page{
 			id: 42,
 			code: `(begin
@@ -539,11 +569,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			highlightIDs[pageIDsDatalog[id]] = struct{}{}
 		}
 
-		for _, illu := range illus {
+		for _, illu := range opencv.Illus {
 			blit(&illu, &cimg)
 			illu.Close()
 		}
-		illus = []gocv.Mat{}
+		opencv.Illus = []gocv.Mat{}
 
 	}, cResults.referenceColors, 10); err != nil {
 		fmt.Println(err)
