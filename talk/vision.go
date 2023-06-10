@@ -191,8 +191,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		l.Eval("(set! dl_idx_entity (make-hashmap))")
 		l.Eval("(set! dl_idx_attr (make-hashmap))")
 		l.Eval("(set! dl_counter 0)")
-		pageDatalogIDs := map[uint64]int{}
-		pageIDsDatalog := map[int]uint64{}
+		datalogIDs := map[uint64]int{}
 
 		for k, v := range persistCorners {
 			if v.ttl == 0 {
@@ -445,104 +444,27 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			}
 
 			lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
-			dlID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
+			dID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
                 ('id %d)
                 ('points %s)
                 ('angle %f)
                 ('code %q)
             )`, p.id, lisppoints, p.angle, p.code))
-			pageDatalogIDs[p.id] = int(dlID.AsNumber())
-			pageIDsDatalog[int(dlID.AsNumber())] = p.id
+			datalogIDs[p.id] = int(dID.AsNumber())
 		}
 
-		// TODO for testing purposes, this page always counts as recognized
-		testpage := page{
-			id: 42,
-			code: `(begin
-            #| should be counterclockwise, somehow isnt; fixed for now by negating angle |# 
-            (define rotateAround (lambda (pivot point angle)
-              (let ((s (sin (- 0 angle)))
-                    (c (cos (- 0 angle)))
-                    (px (car point))
-                    (py (cdr point))
-                    (cx (car pivot))
-                    (cy (cdr pivot)))
-                (let ((x (- px cx))
-                      (y (- py cy)))
-                  (cons
-                    (+ cx (- (* c x) (* s y)))
-                    (+ cy (+ (* s x) (* c y))))))))
-
-            (define point-add (lambda (p q)
-              (cons
-                (+ (car p) (car q))
-                (+ (cdr p) (cdr q)))))
-
-            (define point-sub (lambda (p q)
-              (cons
-                (- (car p) (car q))
-                (- (cdr p) (cdr q)))))
-
-            (define point-mul (lambda (p n)
-              (cons (* (car p) n) (* (cdr p) n))))
-
-            (define point-div (lambda (p n)
-              (cons (/ (car p) n) (/ (cdr p) n))))
-
-            (define midpoint (lambda (points)
-              (point-div (foldl point-add points (cons 0 0)) (length points))))
-
-            (define points->rect (lambda (points)
-              (let ((rects (map (lambda (p)
-                (let ((min (point-add p (cons -1 -1))) (max (point-add p (cons 1 1))))
-                  (make-rectangle (car min) (cdr min) (car max) (cdr max)))) points)))
-                    #| (foldl rects rect:union (car rects)) |#
-                    (rect:union (rect:union (rect:union (car rects) (car (cdr rects))) (car (cdr (cdr rects)))) (car (cdr (cdr (cdr rects)))))
-                   )))
-
-            #| TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? |# 
-
-            (when ((highlighted ,?page ,?color) ((page points) ,?page ,?points) ((page angle) ,?page ,?angle)) do
-                (let ((center (midpoint (quote ,?points)))
-                      (unangle (* -360 (/ ,?angle (* 2 pi))))
-                      (illu (make-illumination)))
-                  (let ((rotated (map (lambda (p) (rotateAround center p ,?angle)) (quote ,?points)))
-                        (m (gocv:rotation_matrix2D (car center) (cdr center) unangle 1.0)))
-                    #| TODO: make p->center a unit vector, add in projector-space inches instead of a percentage |#
-                    (define inset (lambda (p) (point-add p (point-mul (point-sub center p) 0.2))))
-                    (gocv:rect illu (points->rect (map inset rotated)) ,?color -1)
-                    (gocv:text illu "TEST" (point2d (car center) (cdr center)) 0.5 green 2)
-                    #| might not work because it doesnt support inplace |#
-                    (gocv:warp_affine illu illu m 1280 720)
-                    (claim ,?page 'has-illumination 'illu))))
-
-            (when ((outlined ,?page ,?color) ((page points) ,?page ,?points)) do
-                (let ((pts (quote ,?points))
-                      (illu (make-illumination)))
-                  (let ((ulhc (car pts))
-                        (urhc (car (cdr pts)))
-                        (lrhc (car (cdr (cdr pts))))
-                        (llhc (car (cdr (cdr (cdr pts))))))
-                    (let ((ulhc (point2d (car ulhc) (cdr ulhc)))
-                          (urhc (point2d (car urhc) (cdr urhc)))
-                          (lrhc (point2d (car lrhc) (cdr lrhc)))
-                          (llhc (point2d (car llhc) (cdr llhc))))
-                      (gocv:line illu ulhc urhc ,?color 5)
-                      (gocv:line illu urhc lrhc ,?color 5)
-                      (gocv:line illu lrhc llhc ,?color 5)
-                      (gocv:line illu llhc ulhc ,?color 5)))))
-            )`,
+		for _, page := range backgroundPages {
+			_, err := l.Eval(page.code)
+			if err != nil {
+				fmt.Println(page.id, err)
+			}
 		}
-		pageDB[42] = testpage
-		pageDatalogIDs[42] = 0
-		pageIDsDatalog[0] = 42
-		pages[42] = testpage
 
 		for _, page := range pages {
 			// v1 of claim/wish/when
 			// run each pages' code, including claims, wishes and whens
 			// set 'this to the page's id
-			_, err := l.Eval(fmt.Sprintf("(define this %d)", pageDatalogIDs[page.id]))
+			_, err := l.Eval(fmt.Sprintf("(define this %d)", datalogIDs[page.id]))
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -555,18 +477,6 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		_, err := l.Eval("(dl_fixpoint)")
 		if err != nil {
 			fmt.Println("fixpoint", err)
-		}
-
-		ids, err := l.Eval("(dl_find ,?id where ((,?id has-illumination ,?illu)))")
-		if err != nil {
-			fmt.Println("find", err)
-		}
-
-		highlightIDs := map[uint64]struct{}{}
-		lids, _ := lisp.UnpackConsList(ids)
-		for _, idprim := range lids {
-			id := int(idprim.AsNumber())
-			highlightIDs[pageIDsDatalog[id]] = struct{}{}
 		}
 
 		for _, illu := range opencv.Illus {

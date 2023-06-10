@@ -6,7 +6,6 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-	"strings"
 	"time"
 
 	"gocv.io/x/gocv"
@@ -24,18 +23,6 @@ type page struct {
 	ulhc, urhc, lrhc, llhc corner
 	angle                  float64
 	code                   string
-}
-
-// AddPageFromShorthand lets you add a page to the database when you already know its corners
-// used while the database doesnt persist across sessions, so we dont print new pages all the time
-func AddPageFromShorthand(ulhc, urhc, lrhc, llhc, code string) bool {
-	return addToDB(page{
-		ulhc: cornerShorthand(ulhc),
-		urhc: cornerShorthand(urhc),
-		llhc: cornerShorthand(llhc),
-		lrhc: cornerShorthand(lrhc),
-		code: code,
-	})
 }
 
 // to define left and right under rotation:
@@ -81,17 +68,6 @@ func pagePartialID(x, y, z uint16) uint32 {
 	out |= uint32(y) << 10
 	out |= uint32(x) << 20
 	return out
-}
-
-func cornerShorthand(debug string) corner {
-	s := "rgby"
-	return corner{
-		ll: dot{c: dotColor(strings.IndexRune(s, rune(debug[0])))},
-		l:  dot{c: dotColor(strings.IndexRune(s, rune(debug[1])))},
-		m:  dot{c: dotColor(strings.IndexRune(s, rune(debug[2])))},
-		r:  dot{c: dotColor(strings.IndexRune(s, rune(debug[3])))},
-		rr: dot{c: dotColor(strings.IndexRune(s, rune(debug[4])))},
-	}
 }
 
 type dot struct {

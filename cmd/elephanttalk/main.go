@@ -1,8 +1,13 @@
 package main
 
 import (
+	_ "embed"
+
 	"github.com/deosjr/elephanttalk/talk"
 )
+
+//go:embed test.lisp
+var testpage string
 
 func main() {
 
@@ -11,6 +16,9 @@ func main() {
 
 	//page2
 	talk.AddPageFromShorthand("yggyg", "rgyrb", "bybbg", "brgrg", `(claim this 'highlighted 'red)`)
+
+	//page that always counts as recognised but doesnt have to be present physically
+	talk.AddBackgroundPage(testpage)
 
 	talk.Run()
 }
