@@ -14,8 +14,9 @@ jobs:
       with:
         go-version: 1.20.x
 
-    - name: Test
-      run: go test -v -count=1 -short ./...
+# commented out until we actually have tests, and I figure out gocv workflows
+#    - name: Test
+#      run: go test -v -count=1 -short ./...
 
     - name: Fmt
       run: go fmt ./...

@@ -6,7 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
-    "strings"
+	"strings"
 	"time"
 
 	"gocv.io/x/gocv"
@@ -29,13 +29,13 @@ type page struct {
 // AddPageFromShorthand lets you add a page to the database when you already know its corners
 // used while the database doesnt persist across sessions, so we dont print new pages all the time
 func AddPageFromShorthand(ulhc, urhc, lrhc, llhc, code string) bool {
-    return addToDB(page{
-        ulhc: cornerShorthand(ulhc),
-        urhc: cornerShorthand(urhc),
-        llhc: cornerShorthand(llhc),
-        lrhc: cornerShorthand(lrhc),
-        code: code,
-    })
+	return addToDB(page{
+		ulhc: cornerShorthand(ulhc),
+		urhc: cornerShorthand(urhc),
+		llhc: cornerShorthand(llhc),
+		lrhc: cornerShorthand(lrhc),
+		code: code,
+	})
 }
 
 // to define left and right under rotation:
