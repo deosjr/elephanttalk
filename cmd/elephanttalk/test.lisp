@@ -79,7 +79,7 @@
             (urhc (car (cdr pts)))
             (lrhc (car (cdr (cdr pts)))))
         (let ((mid (point-div (point-add ulhc urhc) 2))
-              (line (point-sub urhc lrhc)))
+              (line (point-sub lrhc urhc)))
           (let ((norm (point-div line (sqrt (+ (* (car line) (car line)) (* (cdr line) (cdr line)))))))
             (let ((end (point-add mid (point-mul norm (* pixelsPerCM ,?cm)))))
                 (gocv:line illu (point2d (car mid) (cdr mid)) (point2d (car end) (cdr end)) green 5)
