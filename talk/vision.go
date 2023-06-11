@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/deosjr/elephanttalk/opencv"
-	"github.com/deosjr/whistle/datalog"
-	"github.com/deosjr/whistle/kanren"
-	"github.com/deosjr/whistle/lisp"
 	"gocv.io/x/gocv"
 )
 
@@ -87,10 +84,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
 	defer cimg.Close()
 
-	l := lisp.New()
-	kanren.Load(l)
-	datalog.Load(l)
-	LoadRealTalk(l)
+	l := LoadRealTalk()
 
 	fi := frameInput{
 		webcam:      webcam,
@@ -109,13 +103,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	persistCorners := map[corner]persistPage{}
 
 	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
-		// clear datalog dbs
-		l.Eval("(set! dl_edb (make-hashmap))")
-		l.Eval("(set! dl_idb (make-hashmap))")
-		l.Eval("(set! dl_rdb (quote ()))")
-		l.Eval("(set! dl_idx_entity (make-hashmap))")
-		l.Eval("(set! dl_idx_attr (make-hashmap))")
-		l.Eval("(set! dl_counter 0)")
+        clear(l)
 		datalogIDs := map[uint64]int{}
 
 		for k, v := range persistCorners {
@@ -368,41 +356,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
 			}
 
-			lisppoints := fmt.Sprintf("(list (cons %f %f) (cons %f %f) (cons %f %f) (cons %f %f))", pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y)
-			dID, _ := l.Eval(fmt.Sprintf(`(dl_record 'page
-                ('id %d)
-                ('points %s)
-                ('angle %f)
-                ('code %q)
-            )`, p.id, lisppoints, p.angle, p.code))
-			datalogIDs[p.id] = int(dID.AsNumber())
+            dID := page2lisp(l, p, pts)
+			datalogIDs[p.id] = dID
 		}
 
-		for _, page := range backgroundPages {
-			_, err := l.Eval(page.code)
-			if err != nil {
-				fmt.Println(page.id, err)
-			}
-		}
-
-		for _, page := range pages {
-			// v1 of claim/wish/when
-			// run each pages' code, including claims, wishes and whens
-			// set 'this to the page's id
-			_, err := l.Eval(fmt.Sprintf("(define this %d)", datalogIDs[page.id]))
-			if err != nil {
-				fmt.Println(err)
-			}
-			_, err = l.Eval(page.code)
-			if err != nil {
-				fmt.Println(page.id, err)
-			}
-		}
-
-		_, err := l.Eval("(dl_fixpoint)")
-		if err != nil {
-			fmt.Println("fixpoint", err)
-		}
+        evalPages(l, pages, datalogIDs)
 
 		for _, illu := range opencv.Illus {
 			blit(&illu, &cimg)
