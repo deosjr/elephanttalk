@@ -2,7 +2,7 @@ package talk
 
 import (
 	_ "embed"
-    "fmt"
+	"fmt"
 
 	"github.com/deosjr/elephanttalk/opencv"
 	"github.com/deosjr/whistle/datalog"
@@ -21,7 +21,7 @@ func LoadRealTalk() lisp.Lisp {
 		panic(err)
 	}
 	opencv.Load(l.Env)
-    return l
+	return l
 }
 
 // clear datalog db global vars at start of each frame
@@ -44,7 +44,7 @@ func page2lisp(l lisp.Lisp, p page, pts []point) int {
         ('angle %f)
         ('code %q)
     )`, p.id, lisppoints, p.angle, p.code))
-    return int(dID.AsNumber())
+	return int(dID.AsNumber())
 }
 
 func evalPages(l lisp.Lisp, pages map[uint64]page, datalogIDs map[uint64]int) {

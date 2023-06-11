@@ -103,7 +103,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	persistCorners := map[corner]persistPage{}
 
 	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
-        clear(l)
+		clear(l)
 		datalogIDs := map[uint64]int{}
 
 		for k, v := range persistCorners {
@@ -356,11 +356,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 				pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
 			}
 
-            dID := page2lisp(l, p, pts)
+			dID := page2lisp(l, p, pts)
 			datalogIDs[p.id] = dID
 		}
 
-        evalPages(l, pages, datalogIDs)
+		evalPages(l, pages, datalogIDs)
 
 		for _, illu := range opencv.Illus {
 			blit(&illu, &cimg)
