@@ -58,19 +58,19 @@ func detect(img gocv.Mat, actualImage image.Image, ref []color.RGBA) map[image.R
 			// if we have sampled colors, only consider circles with color 'close' to a reference
 			// TODO: we could use gocv.InRange using NewMatFromScalar for lower/upper bounds then bitwiseOr img per color
 			// then join back(?) the four color-filtered versions of the image and only test Hough against that?
-            /*
-			if ref != nil {
-				closeEnough := false
-				for _, refC := range ref {
-					if colorDistance(c, refC) < 1000000 {
-						closeEnough = true
+			/*
+				if ref != nil {
+					closeEnough := false
+					for _, refC := range ref {
+						if colorDistance(c, refC) < 1000000 {
+							closeEnough = true
+						}
+					}
+					if !closeEnough {
+						continue
 					}
 				}
-				if !closeEnough {
-					continue
-				}
-			}
-            */
+			*/
 
 			mid := image.Pt(int(x), int(y))
 			for rect, list := range spatialPartition {

@@ -11,6 +11,9 @@ var testpage string
 
 func main() {
 
+	// instead of using all coloured dots to identify pages, only use the corner dots
+	talk.UseSimplifiedIDs()
+
 	//page1
 	//talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'outlined 'blue)`)
 	talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'pointing 30)`)

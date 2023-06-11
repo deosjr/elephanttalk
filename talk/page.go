@@ -11,6 +11,14 @@ var cielabGreen = color.RGBA{56, 158, 13, 0}
 var cielabBlue = color.RGBA{57, 16, 133, 0}
 var cielabYellow = color.RGBA{250, 140, 22, 0}
 
+// If true, leave out the furthest corner dots
+// This _drastically_ reduces amount of unique possible pages, but gives stability in detection
+var simpleIDs bool
+
+func UseSimplifiedIDs() {
+	simpleIDs = true
+}
+
 type page struct {
 	id                     uint64
 	ulhc, urhc, lrhc, llhc corner
@@ -34,6 +42,12 @@ func (c corner) debugPrint() string {
 // one corner therefore has 10 bits of information
 func (c corner) id() uint16 {
 	var out uint16
+	if simpleIDs {
+		out |= uint16(c.r.c)
+		out |= uint16(c.m.c) << 2
+		out |= uint16(c.l.c) << 4
+		return out
+	}
 	out |= uint16(c.rr.c)
 	out |= uint16(c.r.c) << 2
 	out |= uint16(c.m.c) << 4
@@ -48,6 +62,13 @@ func (c corner) id() uint16 {
 // this takes 2 bits out of the space of unique 30 bit pageIDs, so 2**28 remain
 func pageID(ulhc, urhc, lrhc, llhc uint16) uint64 {
 	var out uint64
+	if simpleIDs {
+		out |= uint64(llhc)
+		out |= uint64(lrhc) << 6
+		out |= uint64(urhc) << 12
+		out |= uint64(ulhc) << 18
+		return out
+	}
 	out |= uint64(llhc)
 	out |= uint64(lrhc) << 10
 	out |= uint64(urhc) << 20
@@ -57,6 +78,12 @@ func pageID(ulhc, urhc, lrhc, llhc uint16) uint64 {
 
 func pagePartialID(x, y, z uint16) uint32 {
 	var out uint32
+	if simpleIDs {
+		out |= uint32(x)
+		out |= uint32(y) << 6
+		out |= uint32(z) << 12
+		return out
+	}
 	out |= uint32(z)
 	out |= uint32(y) << 10
 	out |= uint32(x) << 20

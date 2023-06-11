@@ -151,16 +151,6 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			gocv.Rectangle(&img, k, red, 2)
 			gocv.Line(&img, corner.m.p.toIntPt(), corner.ll.p.toIntPt(), blue, 2)
 			gocv.Line(&img, corner.m.p.toIntPt(), corner.rr.p.toIntPt(), blue, 2)
-			//gocv.PutText(&img, fmt.Sprintf("%010b", corner.id()), corner.m.p.Add(image.Pt(10, 40)), 0, .5, color.RGBA{}, 2)
-
-			// calculate angle between right arm of corner and absolute right in webcam space
-			rightArm := corner.rr.p.sub(corner.m.p)
-			rightAbs := corner.m.p.add(point{100, 0}).sub(corner.m.p)
-			angle := angleBetween(rightArm, rightAbs)
-			if corner.rr.p.y < corner.m.p.y {
-				angle = 2*math.Pi - angle
-			}
-			gocv.PutText(&img, fmt.Sprintf("%f", angle), corner.m.p.add(point{10, 20}).toIntPt(), 0, .5, color.RGBA{}, 2)
 
 			cs := []color.RGBA{red, green, blue, yellow}
 			gocv.Circle(&img, corner.ll.p.toIntPt(), 8, cs[int(corner.ll.c)], -1)
