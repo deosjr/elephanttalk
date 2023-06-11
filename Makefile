@@ -12,3 +12,6 @@ build: clean
 
 install:
 	go install ./cmd/elephanttalk
+
+fmt:
+	go fmt ./...

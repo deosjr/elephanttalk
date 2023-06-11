@@ -71,4 +71,18 @@
           (gocv:line illu urhc lrhc ,?color 5)
           (gocv:line illu lrhc llhc ,?color 5)
           (gocv:line illu llhc ulhc ,?color 5)))))
+
+(when ((pointing ,?page ,?cm) ((page points) ,?page ,?points)) do
+    (let ((pts (quote ,?points))
+          (illu (make-illumination)))
+      (let ((ulhc (car pts))
+            (urhc (car (cdr pts)))
+            (lrhc (car (cdr (cdr pts)))))
+        (let ((mid (point-div (point-add ulhc urhc) 2))
+              (line (point-sub urhc lrhc)))
+          (let ((norm (point-div line (sqrt (+ (* (car line) (car line)) (* (cdr line) (cdr line)))))))
+            (let ((end (point-add mid (point-mul norm (* pixelsPerCM ,?cm)))))
+                (gocv:line illu (point2d (car mid) (cdr mid)) (point2d (car end) (cdr end)) green 5)
+                #| TODO: if end is contained in another page, assert claim pointing-at page otherpage |#
+                ))))))
 )

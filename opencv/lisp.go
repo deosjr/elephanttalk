@@ -45,6 +45,7 @@ func Load(env *lisp.Env) {
 	// missing math builtins
 	env.AddBuiltin("sin", sine)
 	env.AddBuiltin("cos", cosine)
+	env.AddBuiltin("sqrt", sqrt)
 }
 
 // TODO: defer close? memory leak otherwise?
@@ -138,4 +139,8 @@ func sine(args []lisp.SExpression) (lisp.SExpression, error) {
 
 func cosine(args []lisp.SExpression) (lisp.SExpression, error) {
 	return lisp.NewPrimitive(math.Cos(args[0].AsNumber())), nil
+}
+
+func sqrt(args []lisp.SExpression) (lisp.SExpression, error) {
+	return lisp.NewPrimitive(math.Sqrt(args[0].AsNumber())), nil
 }

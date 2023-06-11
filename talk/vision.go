@@ -85,6 +85,12 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	defer cimg.Close()
 
 	l := LoadRealTalk()
+	// translate to beamerspace
+	pixPerCM := cResults.pixelsPerCM
+	if cResults.displayRatio != 0 {
+		pixPerCM *= (1. / cResults.displayRatio) - 1.
+	}
+	l.Eval(fmt.Sprintf("(define pixelsPerCM %f)", pixPerCM))
 
 	fi := frameInput{
 		webcam:      webcam,
@@ -282,6 +288,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 					continue
 				}
 			}
+			// TODO: if ulhc is not properly detected, this will cause issues
 			for i := 0; i < 4; i++ {
 				if cs[0].id() == p.ulhc.id() {
 					break
