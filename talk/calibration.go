@@ -216,21 +216,3 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	// TODO: happy (y/n) ? if no return to start of calibration
 	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples}
 }
-
-// calibration pattern is four circles in a rectangle
-// check if they are equidistant to their midpoint
-func findCalibrationPattern(v []circle) bool {
-	if len(v) != 4 {
-		return false
-	}
-	midpoint := circlesMidpoint(v)
-
-	dist := euclidian(midpoint.sub(v[0].mid))
-	for _, p := range v[1:] {
-		ddist := euclidian(midpoint.sub(p.mid))
-		if !equalWithMargin(ddist, dist, 2.0) {
-			return false
-		}
-	}
-	return true
-}
