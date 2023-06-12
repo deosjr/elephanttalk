@@ -4,10 +4,12 @@ import (
 	_ "embed"
 	"fmt"
 
+	"github.com/deosjr/elephanttalk/northvolt"
 	"github.com/deosjr/elephanttalk/opencv"
 	"github.com/deosjr/whistle/datalog"
 	"github.com/deosjr/whistle/kanren"
 	"github.com/deosjr/whistle/lisp"
+	"github.com/northvolt/graphql-schema/model"
 )
 
 //go:embed talk.lisp
@@ -21,6 +23,15 @@ func LoadRealTalk() lisp.Lisp {
 		panic(err)
 	}
 	opencv.Load(l.Env)
+	northvolt.Load(l.Env)
+	id := "c-001697947722"
+	out, err := l.Eval(fmt.Sprintf("(dt:identity %q)", id))
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		identity := out.AsPrimitive().(model.NorthvoltIdentity)
+		fmt.Println(identity)
+	}
 	return l
 }
 
