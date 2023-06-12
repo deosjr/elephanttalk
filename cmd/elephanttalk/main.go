@@ -10,7 +10,6 @@ import (
 var testpage string
 
 func main() {
-
 	// instead of using all coloured dots to identify pages, only use the corner dots
 	talk.UseSimplifiedIDs()
 
