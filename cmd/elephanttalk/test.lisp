@@ -1,5 +1,5 @@
 (begin
-#| should be counterclockwise, somehow isnt; fixed for now by negating angle |# 
+#| should be counterclockwise, somehow isnt; fixed for now by negating angle |#
 (define rotateAround (lambda (pivot point angle)
     (let ((s (sin (- 0 angle)))
           (c (cos (- 0 angle)))
@@ -40,7 +40,7 @@
         (rect:union (rect:union (rect:union (car rects) (car (cdr rects))) (car (cdr (cdr rects)))) (car (cdr (cdr (cdr rects)))))
        )))
 
-#| TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? |# 
+#| TODO: illu (ie gocv.Mat) is not hashable, so cant store it in claim in db. pass by ref? |#
 
 (when ((highlighted ,?page ,?color) ((page points) ,?page ,?points) ((page angle) ,?page ,?angle)) do
     (let ((center (midpoint (quote ,?points)))

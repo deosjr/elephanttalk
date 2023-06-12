@@ -40,7 +40,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	w, h := beamerWidth/2., beamerHeight/2.
 	gocv.Line(&cimg, image.Pt(w-5, h), image.Pt(w+5, h), red, 2)
 	gocv.Line(&cimg, image.Pt(w, h-5), image.Pt(w, h+5), red, 2)
-	gocv.PutText(&cimg, "Place calibration pattern", image.Pt(w-100, h+50), 0, .5, color.RGBA{255, 255, 255, 0}, 2)
+	gocv.PutText(&cimg, "Place calibration pattern and press a key in the debug window", image.Pt(w-100, h+50), 0, .5, color.RGBA{255, 255, 255, 0}, 2)
 
 	var pattern []circle
 
@@ -125,7 +125,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 		gocv.Line(&cimg, image.Pt(w-5+200, h), image.Pt(w+5+200, h), red, 2)
 		gocv.Line(&cimg, image.Pt(w+200., h-5), image.Pt(w+200, h+5), red, 2)
-		gocv.PutText(&cimg, "Place calibration pattern", image.Pt(w-100+200, h+50), 0, .5, color.RGBA{255, 255, 255, 0}, 2)
+		gocv.PutText(&cimg, "Move calibration pattern and press a key in the debug window", image.Pt(w-100+200, h+50), 0, .5, color.RGBA{255, 255, 255, 0}, 2)
 
 		// find calibration pattern, draw around it
 		for k, v := range spatialPartition {
