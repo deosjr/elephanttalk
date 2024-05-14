@@ -18,7 +18,7 @@ type calibrationResults struct {
 }
 
 func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
-	w := 13
+	w := 9
 	h := 6
 	// prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 	objectPoints := gocv.NewPoints3fVector()
@@ -60,7 +60,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		cimg:        cimg,
 	}
 
-	termCriteria := gocv.NewTermCriteria(gocv.Count+gocv.EPS, 30, 0.001)
+	termCriteria := gocv.NewTermCriteria(gocv.MaxIter+gocv.EPS, 30, 0.001)
 	waitMillis := 100
 
 	for {
@@ -91,29 +91,13 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		gocv.PutText(&fi.img, fnd_str, image.Pt(0, 40), 0, .5, color.RGBA{255, 0, 0, 0}, 2)
 
 		if found {
-			corners2 := gocv.NewMat()
-			defer corners2.Close()
-			corners.CopyTo(&corners2)
-			gocv.CornerSubPix(gray_img, &corners2, image.Pt(11, 11), image.Pt(-1, -1), termCriteria)
-
-			imgPoints := gocv.NewPoints2fVector()
-			defer imgPoints.Close()
-
+			gocv.CornerSubPix(gray_img, &corners, image.Pt(11, 11), image.Pt(-1, -1), termCriteria)
+			ptsList := gocv.NewPoint2fVectorFromMat(corners).ToPoints()
+			points := [][]gocv.Point2f{}
 			for i := 0; i < h; i++ {
-				points := []gocv.Point2f{}
-
-				for j := 0; j < w; j++ {
-					p := corners2.GetVecfAt(i, j)
-					points = append(points, gocv.Point2f{X: p[0], Y: p[1]})
-				}
-
-				pv := gocv.NewPoint2fVectorFromPoints(points)
-				defer pv.Close()
-				imgPoints.Append(pv)
-
-				// // log the corners to the terminal
-				// fmt.Println(imgpoints.ToPoints())
+				points = append(points, ptsList[i*w:(i+1)*w])
 			}
+			imgPoints := gocv.NewPoints2fVectorFromPoints(points)
 
 			mtx := gocv.NewMat()
 			defer mtx.Close()
@@ -123,6 +107,8 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			defer rvecs.Close()
 			tvecs := gocv.NewMat()
 			defer tvecs.Close()
+			fmt.Printf("%#v\n", objectPoints.ToPoints())
+			fmt.Printf("%#v\n", imgPoints.ToPoints())
 			result := gocv.CalibrateCamera(objectPoints, imgPoints, image.Pt(w, h), &mtx, &dist, &rvecs, &tvecs, 0)
 			fmt.Println(result)
 
