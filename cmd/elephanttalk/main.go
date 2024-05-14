@@ -10,15 +10,18 @@ import (
 var testpage string
 
 func main() {
+	// talk.PrintCalibrationPage()
+	// talk.PrintPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'outlined 'blue)`)
+
 	// instead of using all coloured dots to identify pages, only use the corner dots
-	talk.UseSimplifiedIDs()
+	// talk.UseSimplifiedIDs()
 
 	//page1
 	//talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'outlined 'blue)`)
 	talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'pointing 30)`)
 
 	//page2
-	talk.AddPageFromShorthand("yggyg", "rgyrb", "bybbg", "brgrg", `(claim this 'highlighted 'red)`)
+	// talk.AddPageFromShorthand("yggyg", "rgyrb", "bybbg", "brgrg", `(claim this 'highlighted 'red)`)
 
 	//page that always counts as recognised but doesnt have to be present physically
 	talk.AddBackgroundPage(testpage)

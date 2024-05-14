@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"time"
 
 	"gocv.io/x/gocv"
 )
@@ -14,6 +15,139 @@ type calibrationResults struct {
 	displacement    point
 	displayRatio    float64
 	referenceColors []color.RGBA
+}
+
+func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
+	w := 13
+	h := 6
+	// prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+	objectPoints := gocv.NewPoints3fVector()
+	defer objectPoints.Close()
+
+	gocv.NewPoint3fVectorFromPoints([]gocv.Point3f{})
+
+	objp := make([][]float32, w*h)
+	for i := range objp {
+		objp[i] = make([]float32, 3)
+	}
+
+	for i := 0; i < h; i++ {
+		p3fv := gocv.NewPoint3fVector()
+		defer p3fv.Close()
+
+		for j := 0; j < w; j++ {
+			objp[i*w+j][0] = float32(j)
+			objp[i*w+j][1] = float32(i)
+			objp[i*w+j][2] = float32(0)
+
+			point := gocv.NewPoint3f(objp[i*w+j][0], objp[i*w+j][1], objp[i*w+j][2])
+			p3fv.Append(point)
+		}
+
+		objectPoints.Append(p3fv)
+	}
+
+	img := gocv.NewMat()
+	defer img.Close()
+
+	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
+
+	fi := frameInput{
+		webcam:      webcam,
+		debugWindow: debugwindow,
+		projection:  projection,
+		img:         img,
+		cimg:        cimg,
+	}
+
+	termCriteria := gocv.NewTermCriteria(gocv.Count+gocv.EPS, 30, 0.001)
+	waitMillis := 100
+
+	for {
+		start := time.Now()
+		if ok := fi.webcam.Read(&fi.img); !ok {
+			break
+		}
+		if fi.img.Empty() {
+			continue
+		}
+
+		gray_img := gocv.NewMat()
+		defer gray_img.Close()
+
+		// convert the rgb frame into gray
+		gocv.CvtColor(fi.img, &gray_img, gocv.ColorBGRToGray)
+
+		// Find the chess board corners
+		corners := gocv.NewMat()
+		defer corners.Close()
+		found := gocv.FindChessboardCorners(gray_img, image.Pt(w, h), &corners, gocv.CalibCBAdaptiveThresh+gocv.CalibCBFastCheck)
+		fnd_str := ""
+		if found {
+			fnd_str = "FOUND"
+		} else {
+			fnd_str = "NOT FOUND"
+		}
+		gocv.PutText(&fi.img, fnd_str, image.Pt(0, 40), 0, .5, color.RGBA{255, 0, 0, 0}, 2)
+
+		if found {
+			corners2 := gocv.NewMat()
+			defer corners2.Close()
+			corners.CopyTo(&corners2)
+			gocv.CornerSubPix(gray_img, &corners2, image.Pt(11, 11), image.Pt(-1, -1), termCriteria)
+
+			imgPoints := gocv.NewPoints2fVector()
+			defer imgPoints.Close()
+
+			for i := 0; i < h; i++ {
+				points := []gocv.Point2f{}
+
+				for j := 0; j < w; j++ {
+					p := corners2.GetVecfAt(i, j)
+					points = append(points, gocv.Point2f{X: p[0], Y: p[1]})
+				}
+
+				pv := gocv.NewPoint2fVectorFromPoints(points)
+				defer pv.Close()
+				imgPoints.Append(pv)
+
+				// // log the corners to the terminal
+				// fmt.Println(imgpoints.ToPoints())
+			}
+
+			mtx := gocv.NewMat()
+			defer mtx.Close()
+			dist := gocv.NewMat()
+			defer dist.Close()
+			rvecs := gocv.NewMat()
+			defer rvecs.Close()
+			tvecs := gocv.NewMat()
+			defer tvecs.Close()
+			result := gocv.CalibrateCamera(objectPoints, imgPoints, image.Pt(w, h), &mtx, &dist, &rvecs, &tvecs, 0)
+			fmt.Println(result)
+
+			break
+		}
+
+		// Draw and display the corners
+		gocv.DrawChessboardCorners(&fi.img, image.Pt(w, h), corners, found)
+
+		fps := time.Second / time.Since(start)
+		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
+
+		fi.debugWindow.IMShow(fi.img)
+		fi.projection.IMShow(fi.cimg)
+		key := fi.debugWindow.WaitKey(waitMillis)
+		if key >= 0 {
+			break
+		}
+	}
+
+	pixPerCM := 0 / 1.0
+	displacement := point{0, 0}
+	displayRatio := 1.0
+	colorSamples := []color.RGBA{}
+	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples}
 }
 
 func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {

@@ -14,7 +14,8 @@ import (
 var (
 	// detected from webcam output instead!
 	//webcamWidth, webcamHeight = 1280, 720
-	beamerWidth, beamerHeight = 1280, 720
+	// beamerWidth, beamerHeight = 1280, 720
+	beamerWidth, beamerHeight = 1920, 1080
 )
 
 func Run() {
@@ -29,7 +30,8 @@ func Run() {
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	cResults := calibration(webcam, debugwindow, projection)
+	cResults := chessBoardCalibration(webcam, debugwindow, projection)
+	// cResults := calibration(webcam, debugwindow, projection)
 	fmt.Println(cResults)
 	/*
 		cResults := calibrationResults{
@@ -39,7 +41,7 @@ func Run() {
 			referenceColors: []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}},
 		}
 	*/
-	vision(webcam, debugwindow, projection, cResults)
+	// vision(webcam, debugwindow, projection, cResults)
 }
 
 type frameInput struct {
@@ -70,7 +72,7 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle),
 		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
 
 		fi.debugWindow.IMShow(fi.img)
-		fi.projection.IMShow(fi.cimg)
+		// fi.projection.IMShow(fi.cimg)
 		key := fi.debugWindow.WaitKey(waitMillis)
 		if key >= 0 {
 			return nil
@@ -162,6 +164,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			cornersByTop[corner.m.p] = corner
 			corners = append(corners, corner)
 		}
+		// fmt.Print("corners: ", corners)
 
 		// attempt to update corners if their colors dont match corner that was really close to it previous frame
 		// persisted corners are guaranteed to have matched an existing page
