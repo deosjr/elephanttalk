@@ -30,9 +30,9 @@ func Run() {
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	cResults := chessBoardCalibration(webcam, debugwindow, projection)
+	chessBoardCalibration(webcam, debugwindow, projection)
 	// cResults := calibration(webcam, debugwindow, projection)
-	fmt.Println(cResults)
+	// fmt.Println(cResults)
 	/*
 		cResults := calibrationResults{
 			pixelsPerCM:     8.33666,
