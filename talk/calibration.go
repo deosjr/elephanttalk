@@ -14,11 +14,15 @@ type calibrationResults struct {
 	displacement    point
 	displayRatio    float64
 	referenceColors []color.RGBA
+	rvec            gocv.Mat
+	tvec            gocv.Mat
+	mtx             gocv.Mat
+	dist            gocv.Mat
 }
 
-func MatToFloat32Slice(mat gocv.Mat) [][]float32 {
+func MatToFloat32Slice(mat gocv.Mat) gocv.Mat {
 	if mat.Empty() {
-		return nil
+		return mat
 	}
 
 	// Get the total number of elements
@@ -40,11 +44,16 @@ func MatToFloat32Slice(mat gocv.Mat) [][]float32 {
 		}
 	}
 
-	return data
+	out := gocv.NewMatWithSize(1, 3, gocv.MatTypeCV32FC3)
+	out.SetFloatAt(0, 0, data[len(data)-1][0])
+	out.SetFloatAt(0, 1, data[len(data)-1][1])
+	out.SetFloatAt(0, 2, data[len(data)-1][2])
+
+	return out
 }
 
 func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
-	w := 13
+	w := 9
 	h := 6
 	CHESS_WIDTH := float32(w)
 	CHESS_HEIGHT := float32(h)
@@ -301,16 +310,24 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			reproj_err := gocv.CalibrateCamera(objectPoints, imgPoints, image.Pt(w, h), &mtx, &dist, &rvecs, &tvecs, 0)
 			fmt.Println("=== Calibrated! === Reprojection error:", reproj_err)
 
-			rvecs_f32 := MatToFloat32Slice(rvecs)
-			fmt.Println("rvecs_f32", rvecs_f32)
-			tvecs_f32 := MatToFloat32Slice(tvecs)
-			fmt.Println("tvecs_f32", tvecs_f32)
-			mtx_f32 := MatToFloat32Slice(mtx)
-			fmt.Println("mtx_f32", mtx_f32)
-			dist_f32 := MatToFloat32Slice(dist)
-			fmt.Println("dist_f32", dist_f32)
+			/*
+				rvecs_f32 := MatToFloat32Slice(rvecs)
+				fmt.Println("rvecs_f32", rvecs_f32)
+				tvecs_f32 := MatToFloat32Slice(tvecs)
+				fmt.Println("tvecs_f32", tvecs_f32)
+				mtx_f32 := MatToFloat32Slice(mtx)
+				fmt.Println("mtx_f32", mtx_f32)
+				dist_f32 := MatToFloat32Slice(dist)
+				fmt.Println("dist_f32", dist_f32)
+			*/
 
 			isCalibrated = true
+			return calibrationResults{
+				rvec: MatToFloat32Slice(rvecs),
+				tvec: MatToFloat32Slice(tvecs),
+				mtx:  mtx,
+				dist: dist,
+			}
 		}
 
 		// Draw and display the corners
@@ -327,11 +344,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		}
 	}
 
-	pixPerCM := 0 / 1.0
-	displacement := point{0, 0}
-	displayRatio := 1.0
-	colorSamples := []color.RGBA{}
-	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples}
+	return calibrationResults{}
 }
 
 // func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {

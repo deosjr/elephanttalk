@@ -9,4 +9,4 @@ require (
 	gocv.io/x/gocv v0.36.1-chessboard
 )
 
-replace gocv.io/x/gocv => ./pkg/gocv
+replace gocv.io/x/gocv => ../../coert/gocv
