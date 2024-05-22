@@ -1,10 +1,13 @@
 package talk
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"time"
+	"unsafe"
 
 	"gocv.io/x/gocv"
 )
@@ -43,17 +46,89 @@ func MatToFloat32Slice(mat gocv.Mat) [][]float32 {
 	return data
 }
 
+func sumMat(mat gocv.Mat) (float64, error) {
+	if mat.Type() != gocv.MatTypeCV32F {
+		return 0, fmt.Errorf("mat is not of type CV_32F")
+	}
+
+	data := mat.ToBytes()
+	var sum float64
+	for i := 0; i < len(data); i += 4 {
+		bits := binary.LittleEndian.Uint32(data[i : i+4])
+		val := *(*float32)(unsafe.Pointer(&bits))
+		sum += float64(val)
+	}
+	return sum, nil
+}
+
+func ensureNonZero(mat gocv.Mat, epsilon float64) (gocv.Mat, error) {
+	if mat.Type() != gocv.MatTypeCV32F {
+		return gocv.Mat{}, fmt.Errorf("mat is not of type CV_32F")
+	}
+
+	data := mat.ToBytes()
+	outData := make([]byte, len(data))
+	for i := 0; i < len(data); i += 4 {
+		bits := binary.LittleEndian.Uint32(data[i : i+4])
+		val := *(*float32)(unsafe.Pointer(&bits))
+		if val == 0 {
+			val = float32(epsilon)
+		}
+		binary.LittleEndian.PutUint32(outData[i:i+4], *(*uint32)(unsafe.Pointer(&val)))
+	}
+
+	// Create a new Mat with the same dimensions as the input but with the modified data
+	result, err := gocv.NewMatWithSizesFromBytes(mat.Size(), gocv.MatTypeCV32F, outData)
+	if err != nil {
+		return gocv.Mat{}, err
+	}
+
+	return result, nil
+}
+
+func divideMatByScalar(mat gocv.Mat, scalar float64) (gocv.Mat, error) {
+	if mat.Type() != gocv.MatTypeCV32F {
+		return gocv.Mat{}, fmt.Errorf("mat is not of type CV_32F")
+	}
+
+	data := mat.ToBytes()
+	outData := make([]byte, len(data))
+	for i := 0; i < len(data); i += 4 {
+		bits := binary.LittleEndian.Uint32(data[i : i+4])
+		val := *(*float32)(unsafe.Pointer(&bits))
+		newVal := float32(val) / float32(scalar)
+		binary.LittleEndian.PutUint32(outData[i:i+4], *(*uint32)(unsafe.Pointer(&newVal)))
+	}
+
+	// Create a new Mat with the same dimensions as the input but with the modified data
+	result, err := gocv.NewMatWithSizesFromBytes(mat.Size(), gocv.MatTypeCV32F, outData)
+	if err != nil {
+		return gocv.Mat{}, err
+	}
+
+	return result, nil
+}
+
 func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
 	w := 13
 	h := 6
 	CHESS_WIDTH := float32(w)
 	CHESS_HEIGHT := float32(h)
 	nbFound := 0
-	minNbFound := 50
+	minNbFound := 10
 	isCalibrated := false
 	cw := 100
 	ch := 100
 	cb := 15
+
+	nbHists := 0
+	minNBHists := 10
+
+	epsilon := 1e-10
+	factor := 0.0
+	THETA := 0.25
+
+	isModeled := false
 
 	cornerDots := [][]float32{
 		{0, 0, 0}, // red LT
@@ -138,6 +213,20 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 	corners_imshow := gocv.NewWindow("corners")
 	defer corners_imshow.Close()
 
+	numMats := 4
+	colorHistSums := make([]gocv.Mat, numMats)
+	nonColorHistSums := make([]gocv.Mat, numMats)
+	colorModels := make([]gocv.Mat, numMats)
+
+	for i := 0; i < numMats; i++ {
+		colorHistSums[i] = gocv.NewMat()
+		defer colorHistSums[i].Close()
+		nonColorHistSums[i] = gocv.NewMat()
+		defer nonColorHistSums[i].Close()
+		colorModels[i] = gocv.NewMat()
+		defer colorModels[i].Close()
+	}
+
 	for {
 		start := time.Now()
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -147,11 +236,12 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			continue
 		}
 
+		frame := fi.img.Clone()
+		defer frame.Close()
 		gray_img := gocv.NewMat()
 		defer gray_img.Close()
-
 		// convert the rgb frame into gray
-		gocv.CvtColor(fi.img, &gray_img, gocv.ColorBGRToGray)
+		gocv.CvtColor(frame, &gray_img, gocv.ColorBGRToGray)
 
 		// Find the chess board corners
 		corners := gocv.NewMat()
@@ -175,7 +265,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			nbFound++
 		}
 
-		if found && isCalibrated {
+		if found && isCalibrated && !isModeled {
 			gocv.CornerSubPix(gray_img, &corners, image.Pt(11, 11), image.Pt(-1, -1), termCriteria)
 
 			point2fVector := gocv.NewPoint2fVectorFromMat(corners)
@@ -221,7 +311,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			defer final_crops.Close()
 
 			// Loop over corner_points and convert points to gocv.PointsVector
-			for _, corner_point := range corner_points {
+			for cidx, corner_point := range corner_points {
 				points := corner_point[0].([][]int)
 				// clr := corner_point[1].(string)
 
@@ -243,14 +333,90 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 				pointsVector.Append(image_points)
 
 				// Create a mask for the polygon
-				mask := gocv.NewMatWithSize(fi.img.Rows(), fi.img.Cols(), gocv.MatTypeCV8U)
+				mask := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8U)
 				defer mask.Close()
 				gocv.FillPoly(&mask, pointsVector, color.RGBA{255, 255, 255, 255})
 
-				// Invert the mask
-				maskInv := gocv.NewMat()
-				defer maskInv.Close()
-				gocv.BitwiseNot(mask, &maskInv)
+				if colorModels[cidx].Empty() {
+					colorHist := gocv.NewMat()
+					defer colorHist.Close()
+					gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, mask, &colorHist, []int{32, 32, 32}, []float64{0, 256, 0, 256, 0, 256}, false)
+
+					if colorHistSums[cidx].Empty() {
+						fmt.Println("Size", colorHist.Size(), "Type", colorHist.Type(), "Channels", colorHist.Channels())
+						colorHistSums[cidx] = colorHist
+					} else {
+						gocv.Add(colorHistSums[cidx], colorHist, &colorHistSums[cidx])
+					}
+
+					// Invert the mask
+					maskInv := gocv.NewMat()
+					defer maskInv.Close()
+					gocv.BitwiseNot(mask, &maskInv)
+
+					nonColorHist := gocv.NewMat()
+					defer nonColorHist.Close()
+					gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, maskInv, &nonColorHist, []int{32, 32, 32}, []float64{0, 256, 0, 256, 0, 256}, false)
+
+					if nonColorHistSums[cidx].Empty() {
+						nonColorHistSums[cidx] = nonColorHist
+					} else {
+						gocv.Add(nonColorHistSums[cidx], nonColorHist, &nonColorHistSums[cidx])
+					}
+
+					if nbHists > minNBHists {
+						colorHistSum := colorHistSums[cidx]
+						if colorHistSum.Empty() {
+							log.Fatal("colorHistSums is empty")
+						}
+						nonColorHistSum := nonColorHistSums[cidx]
+						if nonColorHistSum.Empty() {
+							log.Fatal("nonColorHistSum is empty")
+						}
+
+						colorHistSumS, _ := sumMat(colorHistSum)
+						nonColorHistSumN, _ := sumMat(nonColorHistSum)
+
+						// Hit it Bayes!
+						pColor := colorHistSumS / (colorHistSumS + nonColorHistSumN)
+						pNonColor := 1 - pColor
+						// fmt.Println("pColor:", pColor, "pNonColor:", pNonColor)
+
+						pRgbColor, _ := divideMatByScalar(colorHistSum, colorHistSumS)
+						pRgbNonColor, _ := divideMatByScalar(nonColorHistSum, nonColorHistSumN)
+						// fmt.Println("pRgbColor:", pRgbColor.Size(), "Type", pRgbColor.Type(), "pRgbNonColor:", pRgbNonColor.Size(), "Type", pRgbNonColor.Type())
+
+						pRgb := gocv.NewMat()
+						defer pRgb.Close()
+						gocv.AddWeighted(pRgbColor, pColor, pRgbNonColor, pNonColor, 0, &pRgb)
+						// fmt.Println("pRgb:", pRgb.Size(), "Type:", pRgb.Type())
+
+						// Just to make sure we don't divide by zero
+						pRgb, _ = ensureNonZero(pRgb, epsilon)
+
+						// pRgb_sum, _ := sumMat(pRgb)
+						// fmt.Println("pRgb:", pRgb.Size(), "pRgb_sum:", pRgb_sum, "Type:", pRgb.Type())
+
+						// Add the color model to the list
+						pRgbColorMul := gocv.NewMat()
+						defer pRgbColorMul.Close()
+						divisor := gocv.NewMatFromScalar(gocv.NewScalar(pColor, 0, 0, 0), gocv.MatTypeCV64F)
+						defer divisor.Close()
+						// fmt.Println("pRgb:", divisor.Size(), "Channels:", divisor.Channels(), "Type:", divisor.Type())
+
+						gocv.Multiply(pRgbColor, divisor, &pRgbColorMul)
+						pRgbColorDiv := gocv.NewMat()
+						defer pRgbColorDiv.Close()
+						gocv.Divide(pRgbColorMul, pRgb, &pRgbColorDiv)
+						colorModels[cidx] = pRgbColorDiv
+						// fmt.Println("pRgbColorDiv:", pRgbColorDiv.Size(), "Channels:", pRgbColorDiv.Channels(), "Type:", pRgbColorDiv.Type())
+
+						// Calculate the scaling factor for the frame
+						length := float64(pRgbColorDiv.Size()[0])
+						factor = 1.0 / 256.0 * length
+						// fmt.Println("length:", length, "Factor:", factor)
+					}
+				}
 
 				// Extract the poly from the image using the mask
 				poly := gocv.NewMat()
@@ -286,12 +452,49 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 				} else {
 					gocv.Vconcat(final_crops, final_crop, &final_crops)
 				}
+
+				corners_imshow.IMShow(final_crops)
 			}
 
-			corners_imshow.IMShow(final_crops)
+			if nbHists > minNBHists {
+				isModeled = true
+			}
+
+			nbHists++
 		}
 
-		gocv.PutText(&fi.img, fmt.Sprintf("%s (%d)", fndStr, nbFound), image.Pt(0, 40), 0, .5, color.RGBA{255, 0, 0, 0}, 2)
+		if isModeled {
+			frameFloat := gocv.NewMat()
+			defer frameFloat.Close()
+			frame.ConvertTo(&frameFloat, gocv.MatTypeCV32F)
+			indices := gocv.NewMat()
+			defer indices.Close()
+			factor_mat := gocv.NewMatFromScalar(gocv.NewScalar(factor, 0, 0, 0), gocv.MatTypeCV64F)
+			defer factor_mat.Close()
+			gocv.Multiply(frameFloat, factor_mat, &indices)
+			indices.ConvertTo(&indices, gocv.MatTypeCV32S)
+
+			for cidx, cornerColor := range cornerColors {
+				// Iterate over each pixel location
+				for y := 0; y < indices.Rows(); y++ {
+					for x := 0; x < indices.Cols(); x++ {
+						ix := int(indices.GetIntAt(y, 3*x))   // Blue channel for x index
+						iy := int(indices.GetIntAt(y, 3*x+1)) // Green channel for y index
+						iz := int(indices.GetIntAt(y, 3*x+2)) // Red channel (not used for indexing but exemplified)
+
+						// Assuming p_color_rgbs can be accessed similarly; this might need customization
+						prob := float64(colorModels[cidx].GetFloatAt3(ix, iy, iz))
+						if prob > THETA {
+							fi.img.SetUCharAt(y, x*3+0, cornerColor.R)
+							fi.img.SetUCharAt(y, x*3+1, cornerColor.G)
+							fi.img.SetUCharAt(y, x*3+2, cornerColor.B)
+						}
+					}
+				}
+			}
+		}
+
+		gocv.PutText(&fi.img, fmt.Sprintf("%s (%d, %d)", fndStr, nbFound, nbHists), image.Pt(0, 40), 0, .5, color.RGBA{255, 0, 0, 0}, 2)
 
 		if found && !isCalibrated && nbFound >= minNbFound {
 			rvecs := gocv.NewMat()
