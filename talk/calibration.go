@@ -491,7 +491,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 						iy := int(indices.GetIntAt(y, 3*x+1)) // Green channel for y index
 						iz := int(indices.GetIntAt(y, 3*x+2)) // Red channel (not used for indexing but exemplified)
 
-						// Assuming p_color_rgbs can be accessed similarly; this might need customization
+						// Assuming colorModels[cidx] can be accessed similarly; this might need customization
 						prob := float64(colorModels[cidx].GetFloatAt3(ix, iy, iz))
 						if prob > THETA {
 							fi.img.SetUCharAt(y, x*3+0, cornerColor.R)
