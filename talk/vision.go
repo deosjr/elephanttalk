@@ -24,13 +24,18 @@ func Run() {
 		panic(err)
 	}
 	defer webcam.Close()
+	webcam.Set(gocv.VideoCaptureAutoWB, 0)
+	webcam.Set(gocv.VideoCaptureWBTemperature, 20)
 
 	debugwindow := gocv.NewWindow("debug")
 	defer debugwindow.Close()
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	chessBoardCalibration(webcam, debugwindow, projection)
+	cResults := chessBoardCalibration(webcam, debugwindow, projection)
+	//cResults.referenceColors = []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}}
+	// yellow mapped to black to avoid collisions
+	cResults.referenceColors = []color.RGBA{{255, 0, 0, 0}, {0, 255, 0, 0}, {0, 0, 255, 0}, {0, 0, 0, 0}}
 	// cResults := calibration(webcam, debugwindow, projection)
 	// fmt.Println(cResults)
 	/*
@@ -41,7 +46,7 @@ func Run() {
 			referenceColors: []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}},
 		}
 	*/
-	// vision(webcam, debugwindow, projection, cResults)
+	vision(webcam, debugwindow, projection, cResults)
 }
 
 type frameInput struct {
@@ -352,12 +357,27 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 			// in lisp we store the points already translated to beamerspace instead of webcamspace
 			// NOTE: this means distances between papers in inches should use a conversion as well!
-			for i, pt := range pts {
-				pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+			//for i, pt := range pts {
+			//pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+			projPoints := gocv.NewPoint2fVector()
+			defer projPoints.Close()
+			jacobian := gocv.NewMat()
+			defer jacobian.Close()
+			ptsZ0 := []gocv.Point3f{}
+			for _, pt := range pts {
+				ptsZ0 = append(ptsZ0, gocv.Point3f{float32(pt.x), float32(pt.y), 0})
 			}
+			objPts := gocv.NewPoint3fVectorFromPoints(ptsZ0)
+			gocv.ProjectPoints(objPts, cResults.rvec, cResults.tvec, cResults.mtx, cResults.dist, projPoints, &jacobian, 0)
+			for i, pt := range projPoints.ToPoints() {
+				pts[i] = point{float64(pt.X), float64(pt.Y)}
+			}
+			//}
 
 			dID := page2lisp(l, p, pts)
 			datalogIDs[p.id] = dID
+
+			fmt.Println("Found page with ID ", p.id)
 		}
 
 		evalPages(l, pages, datalogIDs)

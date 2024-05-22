@@ -17,11 +17,17 @@ func main() {
 	// talk.UseSimplifiedIDs()
 
 	//page1
-	//talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'outlined 'blue)`)
-	talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'pointing 30)`)
+	talk.AddPageFromShorthand("bbrrg", "rybbg", "brbyy", "rybgg", `(claim this 'outlined 'blue)`)
+	//talk.AddPageFromShorthand("ygybr", "brgry", "gbgyg", "bgryy", `(claim this 'pointing 30)`)
 
 	//page2
-	// talk.AddPageFromShorthand("yggyg", "rgyrb", "bybbg", "brgrg", `(claim this 'highlighted 'red)`)
+	talk.AddPageFromShorthand("bgrrb", "rybgg", "rbryg", "brgrb", `(claim this 'highlighted 'red)`)
+
+	//testpage
+	//talk.AddPageFromShorthand("ybgyr", "ybrgr", "yrgrb", "brygg", `(claim this 'highlighted 'red)`)
+	// no yellow, yellow works least well
+	talk.AddPageFromShorthand("bgrgb", "rbgbr", "grgrb", "bbrgg", `(claim this 'highlighted 'red)`)
+	talk.PrintPageFromShorthand("bgrgb", "rbgbr", "grgrb", "bbrgg", `(claim this 'highlighted 'red)`)
 
 	//page that always counts as recognised but doesnt have to be present physically
 	talk.AddBackgroundPage(testpage)
