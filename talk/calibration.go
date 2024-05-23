@@ -118,25 +118,101 @@ func divideMatByScalar(mat gocv.Mat, scalar float64) (gocv.Mat, error) {
 	return result, nil
 }
 
+func calcChanceDistribution(cSumHist gocv.Mat, ncSumHist gocv.Mat, epsilon float64, pRGBColorChance *gocv.Mat) (float64, error) {
+	if cSumHist.Empty() || ncSumHist.Empty() {
+		log.Fatal("colorHistSums is empty")
+		return 0.0, fmt.Errorf("invalid mat")
+	}
+
+	cHistSumSc, _ := sumMat(cSumHist)   // Total sum of the colored checker
+	ncHistSumSc, _ := sumMat(ncSumHist) // Total sum of the non-colored checker
+
+	// Hit it Bayes!
+	pColor := cHistSumSc / (cHistSumSc + ncHistSumSc) // Chance of hitting the given colored checker, given a random color
+	pNonColor := 1 - pColor                           // Chance of not hitting the given colored checker, given a random color
+
+	pRgbColor, _ := divideMatByScalar(cSumHist, cHistSumSc)      // Chance distribution in color space of belonging to colored checker
+	pRgbNonColor, _ := divideMatByScalar(ncSumHist, ncHistSumSc) // Chance distribution in color space of not belonging to colored checker
+
+	pRgb := gocv.NewMat()
+	defer pRgb.Close()
+	gocv.AddWeighted(pRgbColor, pColor, pRgbNonColor, pNonColor, 0, &pRgb) // Sum and weigh chance distribution color/non-color
+	pRgb, _ = ensureNonZero(pRgb, epsilon)                                 // Make sure we don't divide by zero
+
+	// Add the color model to the list
+	pRgbColorMul := gocv.NewMat()
+	defer pRgbColorMul.Close()
+	pColorMat := gocv.NewMatFromScalar(gocv.NewScalar(pColor, 0, 0, 0), gocv.MatTypeCV64F)
+	defer pColorMat.Close()
+
+	gocv.Multiply(pRgbColor, pColorMat, &pRgbColorMul)
+	gocv.Divide(pRgbColorMul, pRgb, pRGBColorChance) // Normalize the color model to give the probability of a pixel belonging to the checker color
+
+	// Calculate the scaling factor for mapping the frame RGB color dimensions (256x256x256) to
+	// histogram color space dimensions (32x32x32)
+	// Given that we have 256 colors in three channels, we map each of the three dimensions to the 32x32x32 color space
+	// So the probability of a pixel belonging to the checker color comes from looking in pRGBColorChance at the
+	// given RGB color's location in the 32x32x32 3D chance distribution
+	colorSpaceFactor := 1.0 / 256.0 * float64(pRGBColorChance.Size()[0])
+
+	return colorSpaceFactor, nil
+}
+
+func predictCheckerColors(frame gocv.Mat, canvas *gocv.Mat, cornerColors []color.RGBA, colorModels []gocv.Mat, colorSpaceFactor float64, theta float64) {
+	frameFloat := gocv.NewMat()
+	defer frameFloat.Close()
+	frame.ConvertTo(&frameFloat, gocv.MatTypeCV32F)
+	csFactorMat := gocv.NewMatFromScalar(gocv.NewScalar(colorSpaceFactor, 0, 0, 0), gocv.MatTypeCV64F)
+	defer csFactorMat.Close()
+	csIndices := gocv.NewMat()
+	defer csIndices.Close()
+	// frameFloat has all RGB colors (256x256x256), scale and save each color as an index in (32x32x32)
+	// color space with dimensions of the webcam frame into a pixel->colorspace lookup table (csIndices)
+	gocv.Multiply(frameFloat, csFactorMat, &csIndices)
+	csIndices.ConvertTo(&csIndices, gocv.MatTypeCV32S)
+
+	for cidx, cornerColor := range cornerColors {
+		// Iterate over each color location
+		for y := 0; y < csIndices.Rows(); y++ {
+			for x := 0; x < csIndices.Cols(); x++ {
+				ix := int(csIndices.GetIntAt(y, 3*x))   // Blue channel for x index
+				iy := int(csIndices.GetIntAt(y, 3*x+1)) // Green channel for y index
+				iz := int(csIndices.GetIntAt(y, 3*x+2)) // Red channel (not used for indexing but exemplified)
+
+				// Assuming colorModels[cidx] can be accessed similarly; this might need customization
+				prob := float64(colorModels[cidx].GetFloatAt3(ix, iy, iz))
+
+				if prob > theta {
+					canvas.SetUCharAt(y, x*3+0, cornerColor.R)
+					canvas.SetUCharAt(y, x*3+1, cornerColor.G)
+					canvas.SetUCharAt(y, x*3+2, cornerColor.B)
+				}
+			}
+		}
+	}
+}
+
 func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
-	w := 9
+	w := 13
 	h := 6
+
 	CHESS_WIDTH := float32(w)
 	CHESS_HEIGHT := float32(h)
-	nbFound := 0
-	minNbFound := 10
-	isCalibrated := false
+
 	cw := 100
 	ch := 100
 	cb := 15
 
+	nbFound := 0
 	nbHists := 0
-	minNBHists := 10
+	minNbFound := 50
+	minNBHists := 50
 
-	epsilon := 1e-10
-	factor := 0.0
-	THETA := 0.25
+	colorSpaceFactor := 0.0
+	EPSILON := 1e-10
+	THETA := 0.33
 
+	isCalibrated := false
 	isModeled := false
 
 	cornerDots := [][]float32{
@@ -218,6 +294,10 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 	defer mtx.Close()
 	dist := gocv.NewMat()
 	defer dist.Close()
+	rvecs := gocv.NewMat()
+	defer rvecs.Close()
+	tvecs := gocv.NewMat()
+	defer tvecs.Close()
 
 	corners_imshow := gocv.NewWindow("corners")
 	defer corners_imshow.Close()
@@ -255,7 +335,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		// Find the chess board corners
 		corners := gocv.NewMat()
 		defer corners.Close()
-		found := gocv.FindChessboardCorners(gray_img, image.Pt(w, h), &corners, gocv.CalibCBAdaptiveThresh+gocv.CalibCBFastCheck)
+		found := gocv.FindChessboardCorners(gray_img, image.Pt(w, h), &corners, 0) // gocv.CalibCBAdaptiveThresh+gocv.CalibCBFastCheck
 		fndStr := ""
 		if found {
 			fndStr = "FOUND"
@@ -374,56 +454,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 					}
 
 					if nbHists > minNBHists {
-						colorHistSum := colorHistSums[cidx]
-						if colorHistSum.Empty() {
-							log.Fatal("colorHistSums is empty")
-						}
-						nonColorHistSum := nonColorHistSums[cidx]
-						if nonColorHistSum.Empty() {
-							log.Fatal("nonColorHistSum is empty")
-						}
-
-						colorHistSumS, _ := sumMat(colorHistSum)
-						nonColorHistSumN, _ := sumMat(nonColorHistSum)
-
-						// Hit it Bayes!
-						pColor := colorHistSumS / (colorHistSumS + nonColorHistSumN)
-						pNonColor := 1 - pColor
-						// fmt.Println("pColor:", pColor, "pNonColor:", pNonColor)
-
-						pRgbColor, _ := divideMatByScalar(colorHistSum, colorHistSumS)
-						pRgbNonColor, _ := divideMatByScalar(nonColorHistSum, nonColorHistSumN)
-						// fmt.Println("pRgbColor:", pRgbColor.Size(), "Type", pRgbColor.Type(), "pRgbNonColor:", pRgbNonColor.Size(), "Type", pRgbNonColor.Type())
-
-						pRgb := gocv.NewMat()
-						defer pRgb.Close()
-						gocv.AddWeighted(pRgbColor, pColor, pRgbNonColor, pNonColor, 0, &pRgb)
-						// fmt.Println("pRgb:", pRgb.Size(), "Type:", pRgb.Type())
-
-						// Just to make sure we don't divide by zero
-						pRgb, _ = ensureNonZero(pRgb, epsilon)
-
-						// pRgb_sum, _ := sumMat(pRgb)
-						// fmt.Println("pRgb:", pRgb.Size(), "pRgb_sum:", pRgb_sum, "Type:", pRgb.Type())
-
-						// Add the color model to the list
-						pRgbColorMul := gocv.NewMat()
-						defer pRgbColorMul.Close()
-						divisor := gocv.NewMatFromScalar(gocv.NewScalar(pColor, 0, 0, 0), gocv.MatTypeCV64F)
-						defer divisor.Close()
-						// fmt.Println("pRgb:", divisor.Size(), "Channels:", divisor.Channels(), "Type:", divisor.Type())
-
-						gocv.Multiply(pRgbColor, divisor, &pRgbColorMul)
-						pRgbColorDiv := gocv.NewMat()
-						defer pRgbColorDiv.Close()
-						gocv.Divide(pRgbColorMul, pRgb, &pRgbColorDiv)
-						colorModels[cidx] = pRgbColorDiv
-						// fmt.Println("pRgbColorDiv:", pRgbColorDiv.Size(), "Channels:", pRgbColorDiv.Channels(), "Type:", pRgbColorDiv.Type())
-
-						// Calculate the scaling factor for the frame
-						length := float64(pRgbColorDiv.Size()[0])
-						factor = 1.0 / 256.0 * length
-						// fmt.Println("length:", length, "Factor:", factor)
+						colorSpaceFactor, _ = calcChanceDistribution(colorHistSums[cidx], nonColorHistSums[cidx], EPSILON, &colorModels[cidx])
 					}
 				}
 
@@ -473,43 +504,12 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		}
 
 		if isModeled {
-			frameFloat := gocv.NewMat()
-			defer frameFloat.Close()
-			frame.ConvertTo(&frameFloat, gocv.MatTypeCV32F)
-			indices := gocv.NewMat()
-			defer indices.Close()
-			factor_mat := gocv.NewMatFromScalar(gocv.NewScalar(factor, 0, 0, 0), gocv.MatTypeCV64F)
-			defer factor_mat.Close()
-			gocv.Multiply(frameFloat, factor_mat, &indices)
-			indices.ConvertTo(&indices, gocv.MatTypeCV32S)
-
-			for cidx, cornerColor := range cornerColors {
-				// Iterate over each pixel location
-				for y := 0; y < indices.Rows(); y++ {
-					for x := 0; x < indices.Cols(); x++ {
-						ix := int(indices.GetIntAt(y, 3*x))   // Blue channel for x index
-						iy := int(indices.GetIntAt(y, 3*x+1)) // Green channel for y index
-						iz := int(indices.GetIntAt(y, 3*x+2)) // Red channel (not used for indexing but exemplified)
-
-						// Assuming colorModels[cidx] can be accessed similarly; this might need customization
-						prob := float64(colorModels[cidx].GetFloatAt3(ix, iy, iz))
-						if prob > THETA {
-							fi.img.SetUCharAt(y, x*3+0, cornerColor.R)
-							fi.img.SetUCharAt(y, x*3+1, cornerColor.G)
-							fi.img.SetUCharAt(y, x*3+2, cornerColor.B)
-						}
-					}
-				}
-			}
+			predictCheckerColors(frame, &fi.img, cornerColors, colorModels, colorSpaceFactor, THETA)
 		}
 
 		gocv.PutText(&fi.img, fmt.Sprintf("%s (%d, %d)", fndStr, nbFound, nbHists), image.Pt(0, 40), 0, .5, color.RGBA{255, 0, 0, 0}, 2)
 
 		if found && !isCalibrated && nbFound >= minNbFound {
-			rvecs := gocv.NewMat()
-			defer rvecs.Close()
-			tvecs := gocv.NewMat()
-			defer tvecs.Close()
 			reproj_err := gocv.CalibrateCamera(objectPoints, imgPoints, image.Pt(w, h), &mtx, &dist, &rvecs, &tvecs, 0)
 			fmt.Println("=== Calibrated! === Reprojection error:", reproj_err)
 
@@ -525,12 +525,6 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			*/
 
 			isCalibrated = true
-			return calibrationResults{
-				rvec: MatToFloat32Slice(rvecs),
-				tvec: MatToFloat32Slice(tvecs),
-				mtx:  mtx,
-				dist: dist,
-			}
 		}
 
 		// Draw and display the corners
@@ -547,7 +541,12 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		}
 	}
 
-	return calibrationResults{}
+	return calibrationResults{
+		rvec: MatToFloat32Slice(rvecs),
+		tvec: MatToFloat32Slice(tvecs),
+		mtx:  mtx,
+		dist: dist,
+	}
 }
 
 // func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
