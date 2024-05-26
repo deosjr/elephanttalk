@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -13,8 +14,8 @@ import (
 )
 
 type calibrationResults struct {
-	pixelsPerCM float64
-	// displacement    point
+	pixelsPerCM     float64
+	displacement    point
 	displayRatio    float64
 	referenceColors []color.RGBA
 	rvec            gocv.Mat
@@ -23,18 +24,25 @@ type calibrationResults struct {
 	dist            gocv.Mat
 }
 
-const EPSILON = 1e-10 // epsilon for division by zero
+const EPSILON = 2.220446049250313e-16 // epsilon for division by zero prevention
 
 var colorWhite = color.RGBA{255, 255, 255, 255}
 var colorRed = color.RGBA{255, 0, 0, 255}
 var colorGreen = color.RGBA{0, 255, 0, 255}
 var colorBlue = color.RGBA{0, 0, 255, 255}
 var cornerColors = []color.RGBA{
-	{13, 158, 56, 0},  // green
-	{22, 140, 250, 0}, // orange
-	{133, 16, 57, 0},  // purple
-	{45, 34, 245, 0},  // red
+	{56, 158, 13, 255},  // green
+	{250, 140, 22, 255}, // orange
+	{57, 16, 133, 255},  // purple
+	{245, 34, 45, 255},  // red
 }
+
+// var cornerColors = []color.RGBA{
+// 	{255, 0, 0, 255}, // red
+// 	{255, 0, 0, 255}, // red
+// 	{255, 0, 0, 255}, // red
+// 	{255, 0, 0, 255}, // red
+// }
 
 func MatToFloat32Slice(mat gocv.Mat) gocv.Mat {
 	if mat.Empty() {
@@ -91,7 +99,7 @@ func ensureNonZero(mat gocv.Mat) (gocv.Mat, error) {
 		bits := binary.LittleEndian.Uint32(data[i : i+4])
 		val := *(*float32)(unsafe.Pointer(&bits))
 		if val == 0 {
-			val = float32(EPSILON)
+			val = EPSILON
 		}
 		binary.LittleEndian.PutUint32(outData[i:i+4], *(*uint32)(unsafe.Pointer(&val)))
 	}
@@ -105,27 +113,79 @@ func ensureNonZero(mat gocv.Mat) (gocv.Mat, error) {
 	return result, nil
 }
 
-func divideMatByScalar(mat gocv.Mat, scalar float64) (gocv.Mat, error) {
-	if mat.Type() != gocv.MatTypeCV32F {
-		return gocv.Mat{}, fmt.Errorf("mat is not of type CV_32F")
-	}
+// func divideMatByScalar(mat gocv.Mat, scalar float64) (gocv.Mat, error) {
+// 	if mat.Type() != gocv.MatTypeCV32F {
+// 		return gocv.Mat{}, fmt.Errorf("mat is not of type CV_32F")
+// 	}
 
-	data := mat.ToBytes()
-	outData := make([]byte, len(data))
-	for i := 0; i < len(data); i += 4 {
-		bits := binary.LittleEndian.Uint32(data[i : i+4])
-		val := *(*float32)(unsafe.Pointer(&bits))
-		newVal := float32(val) / float32(scalar)
-		binary.LittleEndian.PutUint32(outData[i:i+4], *(*uint32)(unsafe.Pointer(&newVal)))
-	}
+// 	data := mat.ToBytes()
+// 	outData := make([]byte, len(data))
+// 	for i := 0; i < len(data); i += 4 {
+// 		bits := binary.LittleEndian.Uint32(data[i : i+4])
+// 		val := *(*float32)(unsafe.Pointer(&bits))
+// 		newVal := float32(val) / float32(scalar)
+// 		binary.LittleEndian.PutUint32(outData[i:i+4], *(*uint32)(unsafe.Pointer(&newVal)))
+// 	}
 
-	// Create a new Mat with the same dimensions as the input but with the modified data
-	result, err := gocv.NewMatWithSizesFromBytes(mat.Size(), gocv.MatTypeCV32F, outData)
-	if err != nil {
-		return gocv.Mat{}, err
-	}
+// 	// Create a new Mat with the same dimensions as the input but with the modified data
+// 	result, err := gocv.NewMatWithSizesFromBytes(mat.Size(), gocv.MatTypeCV32F, outData)
+// 	if err != nil {
+// 		return gocv.Mat{}, err
+// 	}
 
-	return result, nil
+// 	return result, nil
+// }
+
+// Print3DMatValues prints all the values of a 3D gocv.Mat in a structured tabular format.
+func Print3DMatValues32f(mat gocv.Mat) {
+	// Assume mat is a 3D matrix where each point is a single float
+	rows := mat.Size()[0]
+	cols := mat.Size()[1]
+	depth := mat.Size()[2] // Assuming the third dimension size is retrievable like this
+
+	for d := 0; d < depth; d++ {
+		fmt.Printf("Slice %d:\n", d)
+		for c := 0; c < cols; c++ {
+			for r := 0; r < rows; r++ {
+				val := mat.GetFloatAt3(d, c, r)
+				fmt.Printf("%9.8f ", val)
+			}
+			fmt.Println() // New line for each row
+		}
+		fmt.Println() // Extra new line after each depth slice
+	}
+}
+func Print3DMatValues32i(mat gocv.Mat) {
+	// Assume mat is a 3D matrix where each point is a single float
+	rows := mat.Rows()
+	cols := mat.Cols()
+
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			val := mat.GetIntAt(r, c)
+			fmt.Printf("%d ", val)
+		}
+		fmt.Println() // New line for each row
+	}
+}
+func Print3DMatValues8UC3(mat gocv.Mat) {
+	// Assume mat is a 3D matrix where each point is a single float
+	rows := mat.Size()[0]
+	cols := mat.Size()[1]
+	chns := mat.Channels()
+	mat_data, _ := mat.DataPtrUint8()
+	for r := 0; r < rows; r++ {
+		for c := 0; c < cols; c++ {
+			fmt.Printf("[")
+			for ch := 0; ch < chns; ch++ {
+				val := mat_data[mat.Cols()*r*3+c*3+ch]
+				fmt.Printf("%d ", val)
+			}
+			fmt.Println("]")
+		}
+		fmt.Println()
+	}
+	fmt.Println() // Extra new line after each depth slice
 }
 
 func calcChanceDistribution(cSumHist gocv.Mat, ncSumHist gocv.Mat, pRGBColorChance *gocv.Mat) (float64, error) {
@@ -133,37 +193,98 @@ func calcChanceDistribution(cSumHist gocv.Mat, ncSumHist gocv.Mat, pRGBColorChan
 		log.Fatal("colorHistSums is empty")
 		return 0.0, fmt.Errorf("invalid mat")
 	}
+	// fmt.Println("cSumHist", cSumHist.Size())
+	// Print3DMatValues32f(cSumHist)
+	// fmt.Println("ncSumHist", ncSumHist.Size())
+	// Print3DMatValues32f(ncSumHist)
 
-	cHistSumSc, _ := sumMat(cSumHist)   // Total sum of the colored checker
-	ncHistSumSc, _ := sumMat(ncSumHist) // Total sum of the non-colored checker
+	cHistSumSc, _ := sumMat(cSumHist)   // Total sum of the colors in the colored checkers per checker
+	ncHistSumSc, _ := sumMat(ncSumHist) // Total sum of the colors in the rest of the image per checker (in the not space of the colored checkers)
+
+	// fmt.Println("cHistSumSc", cHistSumSc, "ncHistSumSc", ncHistSumSc)
 
 	// Hit it Bayes!
-	pColor := cHistSumSc / (cHistSumSc + ncHistSumSc) // Chance of hitting the given colored checker, given a random color
-	pNonColor := 1 - pColor                           // Chance of not hitting the given colored checker, given a random color
+	pColor := cHistSumSc / (cHistSumSc + ncHistSumSc) // P(checker_color)  : Chance of hitting the given colored checker, given a random color
+	pNonColor := 1 - pColor                           // P(~checker_color) : Chance of not hitting the given colored checker, given a random color
 
-	pRgbColor, _ := divideMatByScalar(cSumHist, cHistSumSc)      // Chance distribution in color space of belonging to colored checker
-	pRgbNonColor, _ := divideMatByScalar(ncSumHist, ncHistSumSc) // Chance distribution in color space of not belonging to colored checker
+	// fmt.Println("pColor", pColor, "pNonColor", pNonColor)
 
-	pRgb := gocv.NewMat()
-	defer pRgb.Close()
-	gocv.AddWeighted(pRgbColor, pColor, pRgbNonColor, pNonColor, 0, &pRgb) // Sum and weigh chance distribution color/non-color
-	pRgb, _ = ensureNonZero(pRgb)                                          // Make sure we don't divide by zero
+	cHistSumScMat := gocv.NewMatFromScalar(gocv.NewScalar(cHistSumSc, 0, 0, 0), gocv.MatTypeCV64F)
+	defer cHistSumScMat.Close()
+	pRgbColor := gocv.NewMat()
+	defer pRgbColor.Close()
+	gocv.Divide(cSumHist, cHistSumScMat, &pRgbColor) // P(rgb|checker_color)  : Chance distribution in color space of belonging to colored checker
 
-	// Add the color model to the list
-	pRgbColorMul := gocv.NewMat()
-	defer pRgbColorMul.Close()
+	// fmt.Print("pRgbColor: ")
+	// Print3DMatValues32f(pRgbColor)
+	// pRgbColor, _ := divideMatByScalar(cSumHist, cHistSumSc)      // Chance distribution in color space of belonging to colored checker
+
+	ncHistSumScMat := gocv.NewMatFromScalar(gocv.NewScalar(ncHistSumSc, 0, 0, 0), gocv.MatTypeCV64F)
+	defer ncHistSumScMat.Close()
+	pRgbNonColor := gocv.NewMat()
+	defer pRgbNonColor.Close()
+	gocv.Divide(ncSumHist, ncHistSumScMat, &pRgbNonColor) // P(rgb|~checker_color) : Chance distribution in color space of not belonging to colored checker
+
+	// fmt.Print("pRgbNonColor: ")
+	// Print3DMatValues32f(pRgbNonColor)
+	// pRgbNonColor, _ := divideMatByScalar(ncSumHist, ncHistSumSc) // Chance distribution in color space of not belonging to colored checker
+
 	pColorMat := gocv.NewMatFromScalar(gocv.NewScalar(pColor, 0, 0, 0), gocv.MatTypeCV64F)
 	defer pColorMat.Close()
 
+	// pNonColorMat := gocv.NewMatFromScalar(gocv.NewScalar(pNonColor, 0, 0, 0), gocv.MatTypeCV64F)
+	// defer pNonColorMat.Close()
+
+	pRgbColorMul := gocv.NewMat()
+	defer pRgbColorMul.Close()
 	gocv.Multiply(pRgbColor, pColorMat, &pRgbColorMul)
-	gocv.Divide(pRgbColorMul, pRgb, pRGBColorChance) // Normalize the color model to give the probability of a pixel belonging to the checker color
+
+	// minVal, maxVal, _, _ := gocv.MinMaxIdx(pRgbColorMul)
+	// fmt.Println("MinVal", minVal, "MaxVal", maxVal)
+	// sumPRgbColorMul, _ := sumMat(pRgbColorMul)
+	// fmt.Println("pRgbColorMul", pRgbColorMul.Size(), "sumPRgbColorMul", sumPRgbColorMul)
+
+	// pRgbNonColorMul := gocv.NewMat()
+	// defer pRgbNonColorMul.Close()
+	// gocv.Multiply(pRgbNonColor, pNonColorMat, &pRgbNonColorMul)
+	// minValpRgbNonColorMul, maxValpRgbNonColorMul, _, _ := gocv.MinMaxIdx(pRgbNonColorMul)
+	// fmt.Println("MinVal", minValpRgbNonColorMul, "MaxVal", maxValpRgbNonColorMul)
+	// sumpRgbNonColorMul, _ := sumMat(pRgbNonColorMul)
+	// fmt.Println("pRgbNonColorMul", pRgbNonColorMul.Size(), "sumpRgbNonColorMul", sumpRgbNonColorMul)
+
+	pRGB := gocv.NewMat()
+	defer pRGB.Close()
+
+	// gocv.Add(pRgbColorMul, pRgbNonColorMul, &pRGB)
+	gocv.AddWeighted(pRgbColor, pColor, pRgbNonColor, pNonColor, 0, &pRGB) // P(rgb) : Sum and weigh chance distribution color/non-color
+	pRGB, _ = ensureNonZero(pRGB)                                          // Make sure we don't divide by zero
+
+	// minValpRGB, maxValpRGB, _, _ := gocv.MinMaxIdx(pRGB)
+	// fmt.Println("MinVal", minValpRGB, "MaxVal", maxValpRGB)
+	// sumPRGB, _ := sumMat(pRGB)
+	// fmt.Println("Size", pRGB.Size(), "pRGB", sumPRGB)
+	// Print3DMatValues32f(pRGB)
+
+	// minValpRgbColorMul, maxValpRgbColorMul, _, _ := gocv.MinMaxIdx(pRgbColorMul)
+	// fmt.Println("MinVal", minValpRgbColorMul, "MaxVal", maxValpRgbColorMul)
+	// sumPRgbColorMul, _ = sumMat(pRgbColorMul)
+	// fmt.Println("pRgbColorMul", pRgbColorMul.Size(), "sumPRgbColorMul", sumPRgbColorMul)
+	// Print3DMatValues32f(pRgbColorMul)
+
+	gocv.Divide(pRgbColorMul, pRGB, pRGBColorChance) // P(checker_color|rgb) : Bayes' theorem
+	// gocv.Normalize(*pRGBColorChance, pRGBColorChance, 0, 1, gocv.NormMinMax)
+	minValpRGBColorChance, maxValpRGBColorChance, _, _ := gocv.MinMaxIdx(*pRGBColorChance)
+	sumPRGBColorChance, _ := sumMat(*pRGBColorChance)
+	fmt.Println("MinVal", minValpRGBColorChance, "MaxVal", maxValpRGBColorChance, "Sum", sumPRGBColorChance)
+	// Print3DMatValues32f(*pRGBColorChance)
 
 	// Calculate the scaling factor for mapping the frame RGB color dimensions (256x256x256) to
-	// histogram color space dimensions (32x32x32)
+	// histogram color space dimensions (eg.: 32x32x32)
 	// Given that we have 256 colors in three channels, we map each of the three dimensions to the 32x32x32 color space
 	// So the probability of a pixel belonging to the checker color comes from looking in pRGBColorChance at the
 	// given RGB color's location in the 32x32x32 3D chance distribution
 	colorSpaceFactor := 1.0 / 256.0 * float64(pRGBColorChance.Size()[0])
+	fmt.Println("colorSpaceFactor", colorSpaceFactor)
 
 	return colorSpaceFactor, nil
 }
@@ -171,35 +292,98 @@ func calcChanceDistribution(cSumHist gocv.Mat, ncSumHist gocv.Mat, pRGBColorChan
 func predictCheckerColors(frame gocv.Mat, canvas *gocv.Mat, cornerColors []color.RGBA, colorModels []gocv.Mat, colorSpaceFactor float64, theta float64) {
 	frameFloat := gocv.NewMat()
 	defer frameFloat.Close()
-	frame.ConvertTo(&frameFloat, gocv.MatTypeCV32F)
-	csFactorMat := gocv.NewMatFromScalar(gocv.NewScalar(colorSpaceFactor, 0, 0, 0), gocv.MatTypeCV64F)
+	frame.ConvertTo(&frameFloat, gocv.MatTypeCV32FC3)
+	// frame_red := frame.Clone()
+	// defer frame_red.Close()
+	// red := gocv.NewScalar(0, 0, 255, 0)
+	// frame_red.SetTo(red)
+	// frame_red.ConvertTo(&frameFloat, gocv.MatTypeCV32FC3)
+	// fmt.Println("Size", frameFloat.Size(), "Channels", frameFloat.Channels(), "Type", frameFloat.Type())
+	csFactorMat := gocv.NewMatFromScalar(gocv.NewScalar(colorSpaceFactor, colorSpaceFactor, colorSpaceFactor, colorSpaceFactor), gocv.MatTypeCV64F)
+	// fmt.Println("Size", csFactorMat.Size(), "Channels", csFactorMat.Channels(), "Type", csFactorMat.Type())
 	defer csFactorMat.Close()
 	csIndices := gocv.NewMat()
 	defer csIndices.Close()
-	// frameFloat has all RGB colors (256x256x256), scale and save each color as an index in (32x32x32)
+	// frameFloat has all RGB colors (256x256x256), scale and save each color as an index in histogram (32x32x32)
 	// color space with dimensions of the webcam frame into a pixel->colorspace lookup table (csIndices)
 	gocv.Multiply(frameFloat, csFactorMat, &csIndices)
-	csIndices.ConvertTo(&csIndices, gocv.MatTypeCV32S)
+	csIndices.ConvertTo(&csIndices, gocv.MatTypeCV16S)
 
-	for cidx, cornerColor := range cornerColors {
-		// Iterate over each color location
-		for y := 0; y < csIndices.Rows(); y++ {
-			for x := 0; x < csIndices.Cols(); x++ {
-				ix := int(csIndices.GetIntAt(y, 3*x))   // Blue channel for x index
-				iy := int(csIndices.GetIntAt(y, 3*x+1)) // Green channel for y index
-				iz := int(csIndices.GetIntAt(y, 3*x+2)) // Red channel (not used for indexing but exemplified)
+	// fmt.Println("Size", csIndices.Size(), "Channels", csIndices.Channels(), "Type", csIndices.Type())
+	// mincsIndices, maxcsIndices, _, _ := gocv.MinMaxLoc(csIndices)
+	// fmt.Println("MinVal", mincsIndices, "MaxVal", maxcsIndices)
+	// Print3DMatValues32i(csIndices)
+	// ir := int(csIndices.GetIntAt(0, 0*3+2))
+	// Print3DMatValues32f(colorModels[0])
+	// fmt.Println(ir, colorModels[0].GetFloatAt3(ir, 0, 0))
 
-				// Assuming colorModels[cidx] can be accessed similarly; this might need customization
-				prob := float64(colorModels[cidx].GetFloatAt3(ix, iy, iz))
+	// canvasData, _ := canvas.DataPtrUint8()
+	// sliceSze := canvas.Cols() * canvas.Channels()
+	// nbChnls := canvas.Channels()
 
-				if prob > theta {
-					canvas.SetUCharAt(y, x*3+0, cornerColor.R)
-					canvas.SetUCharAt(y, x*3+1, cornerColor.G)
-					canvas.SetUCharAt(y, x*3+2, cornerColor.B)
+	// for _, colorModel := range colorModels {
+	// 	// Iterate over each color location
+	// 	for y := 0; y < csIndices.Rows(); y++ {
+	// 		for x := 0; x < csIndices.Cols(); x++ {
+	// 			ib := int(csIndices.GetShortAt(y, x*3+0)) // Blue channel for x index
+	// 			ig := int(csIndices.GetShortAt(y, x*3+1)) // Green channel for y index
+	// 			ir := int(csIndices.GetShortAt(y, x*3+2)) // Red channel (not used for indexing but exemplified)
+
+	// 			// Calculate probability for the given model and indices
+	// 			prob := float64(colorModel.GetFloatAt3(ib, ig, ir))
+	// 			if prob > theta {
+	// 				canvasData[y*sliceSze+x*nbChnls+0] = colorWhite.B
+	// 				canvasData[y*sliceSze+x*nbChnls+1] = colorWhite.G
+	// 				canvasData[y*sliceSze+x*nbChnls+2] = colorWhite.R
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	var wg sync.WaitGroup
+	for pidx, colorModel := range colorModels {
+		wg.Add(1)
+		go func(pidx int, colorModel gocv.Mat) {
+			defer wg.Done()
+
+			mask := gocv.NewMat()
+			defer mask.Close()
+			mask = gocv.NewMatWithSize(canvas.Rows(), canvas.Cols(), gocv.MatTypeCV8U)
+
+			// Iterate over each color location
+			for y := 0; y < csIndices.Rows(); y++ {
+				for x := 0; x < csIndices.Cols(); x++ {
+					ib := int(csIndices.GetShortAt(y, x*3+0)) // Blue channel
+					ig := int(csIndices.GetShortAt(y, x*3+1)) // Green channel
+					ir := int(csIndices.GetShortAt(y, x*3+2)) // Red channel
+
+					// Lookup probability of the given color belonging to the given checker color
+					// with chance of at least theta
+					if float64(colorModel.GetFloatAt3(ib, ig, ir)) > theta {
+						mask.SetUCharAt(y, x, 255)
+					}
 				}
 			}
-		}
+
+			// Erode and dilate the mask to remove noise
+			gocv.MorphologyEx(mask, &mask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
+			gocv.MorphologyEx(mask, &mask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
+
+			frame_color := gocv.NewMatWithSize(canvas.Rows(), canvas.Cols(), gocv.MatTypeCV8UC3)
+			defer frame_color.Close()
+
+			color := gocv.NewScalar(
+				float64(cornerColors[pidx].B),
+				float64(cornerColors[pidx].G),
+				float64(cornerColors[pidx].R),
+				255,
+			)
+			frame_color.SetTo(color)
+			frame_color.CopyToWithMask(canvas, mask)
+
+		}(pidx, colorModel)
 	}
+	wg.Wait()
 }
 
 func drawAxes(canvas *gocv.Mat, axesVector gocv.Point3fVector, rvec gocv.Mat, tvec gocv.Mat, mtx gocv.Mat, dist gocv.Mat) {
@@ -212,17 +396,78 @@ func drawAxes(canvas *gocv.Mat, axesVector gocv.Point3fVector, rvec gocv.Mat, tv
 
 	// Draw the axes
 	axesPoints := projAxesPoints.ToPoints()
-	pt1 := image.Pt(int(axesPoints[0].X), int(axesPoints[0].Y))
-	pt2 := image.Pt(int(axesPoints[1].X), int(axesPoints[1].Y))
-	pt3 := image.Pt(int(axesPoints[2].X), int(axesPoints[2].Y))
-	pt4 := image.Pt(int(axesPoints[3].X), int(axesPoints[3].Y))
+	pt0 := image.Pt(int(axesPoints[0].X), int(axesPoints[0].Y))
+	ax_pt1 := image.Pt(int(axesPoints[1].X), int(axesPoints[1].Y))
+	ax_pt2 := image.Pt(int(axesPoints[2].X), int(axesPoints[2].Y))
+	ax_pt3 := image.Pt(int(axesPoints[3].X), int(axesPoints[3].Y))
 
-	gocv.Line(canvas, pt1, pt2, colorRed, 5)
-	gocv.Line(canvas, pt1, pt3, colorGreen, 5)
-	gocv.Line(canvas, pt1, pt4, colorBlue, 5)
+	gocv.Line(canvas, pt0, ax_pt1, colorRed, 5)
+	gocv.Line(canvas, pt0, ax_pt2, colorGreen, 5)
+	gocv.Line(canvas, pt0, ax_pt3, colorBlue, 5)
 }
 
 func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
+	// // Create a 3x3 image with 3 channels for RGB data
+	// img := gocv.NewMatWithSizesWithScalar(
+	// 	[]int{4, 4},
+	// 	gocv.MatTypeCV8UC3,
+	// 	gocv.NewScalar(0, 0, 0, 0),
+	// )
+	// defer img.Close()
+	// fmt.Println("Rows", img.Rows(), "Cols", img.Cols(), "Channels", img.Channels())
+	// // Print3DMatValues8UC3(&img)
+
+	// // Define RGB values for each pixel
+	// // For simplicity, each color component will increment across the image
+	// img_data, _ := img.DataPtrUint8()
+
+	// for r := 0; r < img.Rows(); r++ {
+	// 	for c := 0; c < img.Cols(); c++ {
+	// 		img_data[img.Cols()*r*3+c*3+0] = 0   // uint8(25 * (r + c + 1))
+	// 		img_data[img.Cols()*r*3+c*3+1] = 0   // uint8(25*(r+c+1) + 10)
+	// 		img_data[img.Cols()*r*3+c*3+2] = 255 // uint8(25*(r+c+1) + 20)
+
+	// 		// // Increment color value for visualization
+	// 		// value0 := uint8(25 * (r + c + 1))
+	// 		// value1 := value0 + 10
+	// 		// value2 := value0 + 20
+	// 		// // Set the BGR values (note OpenCV uses BGR by default, not RGB)
+	// 		// img.SetUCharAt3(0, c, r, value0)
+	// 		// img.SetUCharAt3(1, c, r, value1)
+	// 		// img.SetUCharAt3(2, c, r, value2)
+
+	// 		// // val0 := img.GetUCharAt3(0, j, i)
+	// 		// // val1 := img.GetUCharAt3(1, j, i)
+	// 		// // val2 := img.GetUCharAt3(2, j, i)
+	// 		// // fmt.Printf("[%d %d %d], ", val0, val1, val2)
+	// 		// // fmt.Println()
+	// 	}
+	// 	// fmt.Println()
+	// }
+	// img_data, _ = img.DataPtrUint8()
+	// // fmt.Println(img_data)
+	// img1, _ := gocv.NewMatFromBytes(4, 4, gocv.MatTypeCV8UC3, img_data)
+	// Print3DMatValues8UC3(img1)
+
+	// hist := gocv.NewMat()
+	// defer hist.Close()
+	// gocv.CalcHist([]gocv.Mat{img1}, []int{0, 1, 2}, gocv.NewMat(), &hist, []int{3, 3, 3}, []float64{0, 256, 0, 256, 0, 256}, true)
+	// Print3DMatValues32f(hist)
+
+	// fmt.Println("Hist", hist.Size(), hist.Channels(), hist.Type())
+	// for x := 0; x < hist.Size()[0]; x++ {
+	// 	for y := 0; y < hist.Size()[1]; y++ {
+	// 		for z := 0; z < hist.Size()[2]; z++ {
+	// 			fmt.Printf("%9.8f ", hist.GetFloatAt3(x, y, z))
+	// 		}
+	// 	}
+	// 	fmt.Println()
+	// }
+	// prob := hist.GetFloatAt3(0, 0, 2)
+	// fmt.Println("Prob", prob)
+
+	// return calibrationResults{}
+
 	const W = 13             // nb checkers on board horizontal
 	const H = 6              // nb checkers on board vertical
 	const CW = 100           // checker projected resolution (W)
@@ -230,11 +475,12 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 	const CB = 10            // checker projected resolution boundary
 	const NB_CLRD_CHCKRS = 4 // number of colored checkers
 
-	const HIST_SIZE = 32           // color histogram bins per dimension
-	const THETA = 0.33             // probability threshold for color prediction
-	const MIN_NB_CHKBRD_FOUND = 10 // minimum number of frames with checkerboard found
-	const MIN_COLOR_SAMPLES = 10   // minimum number of color samples for color models
-	const WAIT = 100
+	// Curiously enough the Go code does not work with histograms of 32x32x32 but only with histograms > 128x128x128
+	const HIST_SIZE = 129          // color histogram bins per dimension
+	const THETA = 0.5              // probability threshold for color prediction
+	const MIN_NB_CHKBRD_FOUND = 20 // minimum number of frames with checkerboard found
+	const MIN_COLOR_SAMPLES = 20   // minimum number of color samples for color models
+	const WAIT = 5                 // wait time in milliseconds (don't make it too large)
 
 	nbChkBrdFound := 0
 	nbHistsSampled := 0
@@ -334,6 +580,11 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 	cornersWindow := gocv.NewWindow("corners")
 	defer cornersWindow.Close()
 
+	// frame0Window := gocv.NewWindow("frame0Window")
+	// defer frame0Window.Close()
+	// frame1Window := gocv.NewWindow("frame1Window")
+	// defer frame1Window.Close()
+
 	colorHistSums := make([]gocv.Mat, NB_CLRD_CHCKRS)
 	nonColorHistSums := make([]gocv.Mat, NB_CLRD_CHCKRS)
 	colorModels := make([]gocv.Mat, NB_CLRD_CHCKRS)
@@ -406,7 +657,6 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 				defer projPoints.Close()
 				jacobian := gocv.NewMat()
 				defer jacobian.Close()
-
 				gocv.ProjectPoints(cornerDotVector, rvec, tvec, mtx, dist, projPoints, &jacobian, 0)
 
 				for i := 0; i < projPoints.Size(); i++ {
@@ -459,38 +709,67 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 					defer mask.Close()
 					gocv.FillPoly(&mask, pointsVector, colorWhite)
 
-					if colorModels[cidx].Empty() {
-						colorHist := gocv.NewMat()
-						defer colorHist.Close()
-						gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, mask, &colorHist,
-							[]int{HIST_SIZE, HIST_SIZE, HIST_SIZE}, []float64{0, 256, 0, 256, 0, 256}, false)
+					// Invert the mask
+					maskInv := gocv.NewMat()
+					defer maskInv.Close()
+					gocv.BitwiseNot(mask, &maskInv)
 
-						if colorHistSums[cidx].Empty() {
-							// fmt.Println("Size", colorHist.Size(), "Type", colorHist.Type(), "Channels", colorHist.Channels())
-							colorHistSums[cidx] = colorHist.Clone()
-						} else {
-							gocv.Add(colorHistSums[cidx], colorHist, &colorHistSums[cidx])
-						}
+					// frame_red := frame.Clone()
+					// defer frame_red.Close()
+					// red := gocv.NewScalar(0, 0, 255, 0)
+					// frame_red.SetTo(red)
 
-						// Invert the mask
-						maskInv := gocv.NewMat()
-						defer maskInv.Close()
-						gocv.BitwiseNot(mask, &maskInv)
+					// frame_red_nor := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
+					// defer frame_red_nor.Close()
+					// frame_red.CopyToWithMask(&frame_red_nor, mask)
 
-						nonColorHist := gocv.NewMat()
-						defer nonColorHist.Close()
-						gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, maskInv, &nonColorHist,
-							[]int{HIST_SIZE, HIST_SIZE, HIST_SIZE}, []float64{0, 256, 0, 256, 0, 256}, false)
+					// frame_red_inv := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
+					// defer frame_red_inv.Close()
+					// frame_red.CopyToWithMask(&frame_red_inv, maskInv)
 
-						if nonColorHistSums[cidx].Empty() {
-							nonColorHistSums[cidx] = nonColorHist.Clone()
-						} else {
-							gocv.Add(nonColorHistSums[cidx], nonColorHist, &nonColorHistSums[cidx])
-						}
+					// frame0Window.IMShow(frame_red_nor)
+					// frame1Window.IMShow(frame_red_inv)
+					// min_frn, max_frn, _, _ := gocv.MinMaxLoc(frame_red_nor)
+					// min_fri, max_fri, _, _ := gocv.MinMaxLoc(frame_red_inv)
+					// fmt.Println("MinVal", min_frn, "MaxVal", max_frn, "MinVal", min_fri, "MaxVal", max_fri)
+					// fmt.Println("Size", frame_red.Size(), "Channels", frame_red.Channels(), "Type", frame_red.Type())
 
-						if nbHistsSampled > MIN_COLOR_SAMPLES {
-							colorSpaceFactor, _ = calcChanceDistribution(colorHistSums[cidx], nonColorHistSums[cidx], &colorModels[cidx])
-						}
+					colorHist := gocv.NewMat()
+					defer colorHist.Close()
+					gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, mask, &colorHist,
+						[]int{HIST_SIZE, HIST_SIZE, HIST_SIZE}, []float64{0, 256, 0, 256, 0, 256}, false)
+
+					nonColorHist := gocv.NewMat()
+					defer nonColorHist.Close()
+					gocv.CalcHist([]gocv.Mat{frame}, []int{0, 1, 2}, maskInv, &nonColorHist,
+						[]int{HIST_SIZE, HIST_SIZE, HIST_SIZE}, []float64{0, 256, 0, 256, 0, 256}, false)
+
+					// colorHistR := gocv.NewMat()
+					// defer colorHistR.Close()
+					// gocv.CalcHist([]gocv.Mat{frame}, []int{2}, mask, &colorHistR,
+					// 	[]int{HIST_SIZE}, []float64{0, 256}, false)
+					// minVal, maxVal, _, _ := gocv.MinMaxIdx(colorHistR)
+					// fmt.Println("MinVal", minVal, "MaxVal", maxVal)
+					// sumcolorHistR, _ := sumMat(colorHistR)
+					// fmt.Println("pRgbColorMul", colorHistR.Size(), "sumPRgbColorMul", sumcolorHistR)
+
+					if colorHistSums[cidx].Empty() {
+						colorHistSums[cidx] = colorHist.Clone()
+
+					} else {
+						gocv.Add(colorHistSums[cidx], colorHist, &colorHistSums[cidx])
+					}
+
+					if nonColorHistSums[cidx].Empty() {
+						nonColorHistSums[cidx] = nonColorHist.Clone()
+
+					} else {
+						gocv.Add(nonColorHistSums[cidx], nonColorHist, &nonColorHistSums[cidx])
+					}
+
+					if nbHistsSampled > MIN_COLOR_SAMPLES {
+						colorSpaceFactor, _ = calcChanceDistribution(colorHistSums[cidx], nonColorHistSums[cidx], &colorModels[cidx])
+						isModeled = true
 					}
 
 					// Extract the poly from the image using the mask
@@ -530,16 +809,14 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 
 				cornersWindow.IMShow(finalCrops)
 
-				if nbHistsSampled > MIN_COLOR_SAMPLES {
-					isModeled = true
-				}
-
 				nbHistsSampled++
 			}
 		}
 
 		if isModeled {
 			predictCheckerColors(frame, &fi.img, cornerColors, colorModels, colorSpaceFactor, THETA)
+			// fi.img, _ = gocv.NewMatFromBytes(fi.img.Rows(), fi.img.Cols(), gocv.MatTypeCV8UC3, canvas_data)
+			// defer fi.img.Close()
 		}
 
 		gocv.PutText(&fi.img, fmt.Sprintf("%s (%d, %d)", fndStr, nbChkBrdFound, nbHistsSampled), image.Pt(0, 40), 0, .5, colorRed, 2)
