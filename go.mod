@@ -9,5 +9,7 @@ require (
 	gocv.io/x/gocv v0.36.1-chessboard
 )
 
+require gonum.org/v1/gonum v0.15.0 // indirect
+
 // replace gocv.io/x/gocv => ../../coert/gocv
 replace gocv.io/x/gocv => ../gocv
