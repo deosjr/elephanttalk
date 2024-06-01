@@ -32,10 +32,12 @@ func Run() {
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	cResults := chessBoardCalibration(webcam, debugwindow, projection)
-	//cResults.referenceColors = []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}}
+	// createSheets()
+	chessBoardCalibration(webcam, debugwindow, projection)
+	// cResults := chessBoardCalibration(webcam, debugwindow, projection)
+	// cResults.referenceColors = []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}}
 	// yellow mapped to black to avoid collisions
-	cResults.referenceColors = []color.RGBA{{255, 0, 0, 0}, {0, 255, 0, 0}, {0, 0, 255, 0}, {0, 0, 0, 0}}
+	// cResults.referenceColors = []color.RGBA{{255, 0, 0, 0}, {0, 255, 0, 0}, {0, 0, 255, 0}, {0, 0, 0, 0}}
 	// cResults := calibration(webcam, debugwindow, projection)
 	// fmt.Println(cResults)
 	/*
@@ -46,7 +48,7 @@ func Run() {
 			referenceColors: []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}},
 		}
 	*/
-	vision(webcam, debugwindow, projection, cResults)
+	// vision(webcam, debugwindow, projection, cResults)
 }
 
 type frameInput struct {

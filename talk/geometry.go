@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"math"
 	"sort"
+
+	"gocv.io/x/gocv"
 )
 
 type point struct {
@@ -113,4 +115,71 @@ func colorDistance(sample, reference color.Color) float64 {
 	dG := float64(gg>>8) - float64(refG>>8)
 	dB := float64(bb>>8) - float64(refB>>8)
 	return dR*dR + dG*dG + dB*dB
+}
+
+// calculate the area inside a contour
+func getContourArea(contour gocv.PointVector) float64 {
+	area := gocv.ContourArea(contour)
+	return area
+}
+
+// calculate the area of a mask
+func getMaskArea(mask gocv.Mat) int {
+	return gocv.CountNonZero(mask)
+}
+
+// calculate the center of a contour
+func getCenter(points []image.Point) image.Point {
+	// Convert the slice of Points to a Mat
+	contourMat_cidx00 := gocv.NewMatWithSize(1, len(points), gocv.MatTypeCV32SC2)
+	defer contourMat_cidx00.Close()
+	for i, point := range points {
+		contourMat_cidx00.SetIntAt(0, i*2, int32(point.X))
+		contourMat_cidx00.SetIntAt(0, i*2+1, int32(point.Y))
+	}
+
+	// Calculate the moments of the contour
+	moments := gocv.Moments(contourMat_cidx00, false)
+
+	// Calculate the centroid using the moments
+	cx := moments["m10"] / moments["m00"]
+	cy := moments["m01"] / moments["m00"]
+	return image.Pt(int(cx), int(cy))
+}
+
+// Get the extreme point in a list of rectangles given a checker color (pidx).
+// For each colored checker is at a corner of the board, we return the
+// checkers point closest to the edge.
+func getExtremePoint(rectanglePoints []RectanglePoint, pidx int) RectanglePoint {
+	topLeft, topRight, bottomLeft, bottomRight := rectanglePoints[0], rectanglePoints[0], rectanglePoints[0], rectanglePoints[0]
+
+	for _, rp := range rectanglePoints {
+		if rp.Center.X < topLeft.Center.X || (rp.Center.X == topLeft.Center.X && rp.Center.Y < topLeft.Center.Y) {
+			topLeft = rp
+		}
+		if rp.Center.X > topRight.Center.X || (rp.Center.X == topRight.Center.X && rp.Center.Y < topRight.Center.Y) {
+			topRight = rp
+		}
+		if rp.Center.X < bottomLeft.Center.X || (rp.Center.X == bottomLeft.Center.X && rp.Center.Y > bottomLeft.Center.Y) {
+			bottomLeft = rp
+		}
+		if rp.Center.X > bottomRight.Center.X || (rp.Center.X > bottomRight.Center.X && rp.Center.Y > bottomRight.Center.Y) {
+			bottomRight = rp
+		}
+	}
+
+	if pidx == 0 {
+		return topLeft
+	} else if pidx == 1 {
+		return topRight
+	} else if pidx == 2 {
+		return bottomLeft
+	} else {
+		return bottomRight
+	}
+}
+
+// I think this is already here under a different name
+func lineLength(a, b image.Point) float64 {
+	return math.Sqrt(float64((b.X-a.X)*(b.X-a.X) + (b.Y-a.Y)*(b.Y-a.Y)))
 }
