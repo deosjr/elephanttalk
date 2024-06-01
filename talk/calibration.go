@@ -1304,9 +1304,8 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			if isAllCircleMasksSeen {
 				color = colorGreen
 			}
-			prettyPutText(&fi.img, "Adjust the sliders until you see the four checkers in the four quadrant windows,", image.Pt(10, 75), color, 0.3)
-			prettyPutText(&fi.img, "Then, hold the calibration sheet in the middle", image.Pt(10, 85), color, 0.3)
-			prettyPutText(&fi.img, "and align each calibration color to each quadrant color", image.Pt(10, 95), color, 0.3)
+			prettyPutText(&fi.img, "Adjust the sliders until you only see the four colored checkers in the corners of the four quadrant windows.", image.Pt(10, 75), color, 0.3)
+			prettyPutText(&fi.img, "Then, hold the calibration sheet in the middle, aligning each calibration color on the sheet to each quadrant color.", image.Pt(10, 85), color, 0.3)
 		}
 
 		fi.debugWindow.IMShow(fi.img)
