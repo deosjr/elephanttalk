@@ -38,13 +38,15 @@ type RectanglePoint struct {
 // Curiously enough the Go code does not work with histograms of 32x32x32 but only with histograms > 128x128x128
 const W = 12                     // nb checkers on board horizontal
 const H = 6                      // nb checkers on board vertical
-const HIST_SIZE = 160            // color histogram bins per dimension
+const HIST_SIZE = 64             // color histogram bins per dimension
 const THETA = 0.25               // probability threshold for color prediction
 const MIN_NB_CHKBRD_FOUND = 50   // minimum number of frames with checkerboard found
 const MIN_NB_COLOR_SAMPLES = 100 // minimum number of color samples for color models
+const STRAIGHT_W = 640           // width of the straight chessboard
+const STRAIGHT_H = 345           // height of the straight chessboard
 
-const INIT_SAT_VAL = 100
-const INIT_VAL_VAL = 75
+const INIT_SAT_VAL = 75
+const INIT_VAL_VAL = 45
 const NB_CLRD_CHCKRS = 4              // number of colored checkers
 const CW = 100                        // checker projected resolution (W) (pixels per checker, if you measure the checker size in mm, it can be that)
 const CH = 100                        // checker projected resolution (H) (pixels per checker, if you measure the checker size in mm, it can be that)
@@ -804,7 +806,7 @@ func prettyPutText(canvas *gocv.Mat, text string, origin image.Point, color colo
 func calcStraightChessboard(frame gocv.Mat, cornerDotVector gocv.Point3fVector, cbCheckersR3 gocv.Point3fVector,
 	mtx, dist, rvec, tvec gocv.Mat, termCriteria gocv.TermCriteria) straightChessboard {
 	srcSize := image.Pt(frame.Cols(), frame.Rows())
-	dstSize := image.Pt(int(1298), int(700))
+	dstSize := image.Pt(STRAIGHT_W, STRAIGHT_H)
 
 	fmt.Println("RVEC")
 	PrintMatValues64FC(rvec)
@@ -884,7 +886,7 @@ func straightenChessboard(frame gocv.Mat, sc straightChessboard) gocv.Mat {
 	mapy := sc.mapy
 	roi := sc.roi
 	M := sc.M
-	dstSize := image.Pt(int(1298), int(700))
+	dstSize := image.Pt(STRAIGHT_W, STRAIGHT_H)
 
 	canvas := gocv.NewMat()
 	defer canvas.Close()
@@ -907,9 +909,9 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 	for cidx, colorModel := range colorModels {
 		mask := predictCheckerColor(frame, colorModel, colorSpaceFactor)
 
-		// Erode and dilate the mask to remove noise
-		gocv.MorphologyEx(mask, &mask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
-		gocv.MorphologyEx(mask, &mask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
+		// // Erode and dilate the mask to remove noise
+		// gocv.MorphologyEx(mask, &mask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
+		// gocv.MorphologyEx(mask, &mask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
 
 		maskClone := mask.Clone()
 		masks[cidx].Push(&maskClone)
@@ -924,17 +926,16 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 
 			gocv.BitwiseOr(dotsMask, masksSum, &dotsMask)
 
-			color := gocv.NewScalar(
-				float64(cornerColors[cidx].B),
-				float64(cornerColors[cidx].G),
-				float64(cornerColors[cidx].R),
-				255,
-			)
-
-			frameColor := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
-			defer frameColor.Close()
-			frameColor.SetTo(color)
-			frameColor.CopyToWithMask(&frame, masksSum)
+			// color := gocv.NewScalar(
+			// 	float64(cornerColors[cidx].B),
+			// 	float64(cornerColors[cidx].G),
+			// 	float64(cornerColors[cidx].R),
+			// 	255,
+			// )
+			// frameColor := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
+			// defer frameColor.Close()
+			// frameColor.SetTo(color)
+			// frameColor.CopyToWithMask(&frame, masksSum)
 		}
 	}
 
@@ -1116,7 +1117,6 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 
 			gocv.CvtColor(frame, &frameGray, gocv.ColorBGRToGray)
 			isChkbrdFound = gocv.FindChessboardCorners(frameGray, image.Pt(W, H), &corners, gocv.CalibCBAdaptiveThresh+gocv.CalibCBFastCheck)
-
 			if isChkbrdFound {
 				gocv.CornerSubPix(frameGray, &corners, image.Pt(11, 11), image.Pt(-1, -1), termCriteria)
 			}
@@ -1285,7 +1285,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		currentTS := time.Now()
 		elapsedTime := currentTS.Sub(prevTS)
 		fps := float64(time.Second) / float64(elapsedTime)
-		prettyPutText(&fi.img, fmt.Sprintf("FPS: %.2f", fps), image.Pt(10, 15), colorWhite, 0.4)
+		prettyPutText(&fi.img, fmt.Sprintf("FPS: %.2f, [%d,%d]", fps, H, W), image.Pt(10, 15), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("%s (%d, %d)", fndStr, nbChkBrdFound, nbHistsSampled), image.Pt(10, 30), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("ExposureTime: %d, WhiteBalanceTemp.: %d", exposureTime, whiteBalanceTemperature), image.Pt(10, 45), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("isCalibrated: %t, isLocked: %t, isModeled: %t, isSheetCalibrated: %t", isCalibrated, isLocked, isModeled, isSheetCalibrated), image.Pt(10, 60), colorWhite, 0.4)
