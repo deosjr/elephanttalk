@@ -43,6 +43,8 @@ const THETA = 0.25               // probability threshold for color prediction
 const MIN_NB_CHKBRD_FOUND = 50   // minimum number of frames with checkerboard found
 const MIN_NB_COLOR_SAMPLES = 100 // minimum number of color samples for color models
 
+const INIT_SAT_VAL = 100
+const INIT_VAL_VAL = 75
 const NB_CLRD_CHCKRS = 4              // number of colored checkers
 const CW = 100                        // checker projected resolution (W) (pixels per checker, if you measure the checker size in mm, it can be that)
 const CH = 100                        // checker projected resolution (H) (pixels per checker, if you measure the checker size in mm, it can be that)
@@ -72,7 +74,6 @@ var masksGlob = []*Deque{}
 func sampleColorWithMask(frame gocv.Mat, masks [4]gocv.Mat, colorHistSums []gocv.Mat, nonColorHistSums []gocv.Mat, cidx int) {
 	frame_clrsp := gocv.NewMat()
 	defer frame_clrsp.Close()
-	// frame_clrsp = frame.Clone()
 	gocv.CvtColor(frame, &frame_clrsp, gocv.ColorBGRToLuv)
 
 	// Invert the mask
@@ -114,7 +115,6 @@ func sampleColors(frame gocv.Mat, cornerPointsProj [][]interface{},
 
 	frame_clrsp := gocv.NewMat()
 	defer frame_clrsp.Close()
-	// frame_clrsp = frame.Clone()
 	gocv.CvtColor(frame, &frame_clrsp, gocv.ColorBGRToLuv)
 
 	finalCrops := gocv.NewMat()
@@ -429,10 +429,6 @@ func predictCheckerColor(frame gocv.Mat, colorModel gocv.Mat, colorSpaceFactor f
 		mask.Close()
 	}
 
-	// Erode and dilate the mask to remove noise
-	gocv.MorphologyEx(finalMask, &finalMask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
-	gocv.MorphologyEx(finalMask, &finalMask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
-
 	return finalMask
 }
 
@@ -445,6 +441,10 @@ func predictCheckerColors(frame gocv.Mat, canvas *gocv.Mat,
 
 	for pidx, colorModel := range colorModels {
 		mask := predictCheckerColor(frame, colorModel, colorSpaceFactor)
+
+		// Erode and dilate the mask to remove noise
+		gocv.MorphologyEx(mask, &mask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
+		gocv.MorphologyEx(mask, &mask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
 
 		maskClone := mask.Clone()
 		masksGlob[pidx].Push(&maskClone)
@@ -796,7 +796,7 @@ func prettyPutText(canvas *gocv.Mat, text string, origin image.Point, color colo
 	fontFace := gocv.FontHersheySimplex
 	fontThickness := 1
 	lineType := gocv.LineAA
-	gocv.GetTextSize(text, fontFace, fontScale, fontThickness)
+	// gocv.GetTextSize(text, fontFace, fontScale, fontThickness)
 	gocv.PutTextWithParams(canvas, text, origin, fontFace, fontScale, colorBlack, fontThickness+2, lineType, false)
 	gocv.PutTextWithParams(canvas, text, origin, fontFace, fontScale, color, fontThickness, lineType, false)
 }
@@ -869,10 +869,6 @@ func calcStraightChessboard(frame gocv.Mat, cornerDotVector gocv.Point3fVector, 
 
 		M.Close()
 		M = gocv.GetPerspectiveTransform2f(projPoints, chessboardCornersR2)
-		// scbRegion := gocv.NewMat()
-		// defer scbRegion.Close()
-		// gocv.WarpPerspective(cbRegion, &scbRegion, M, dstSize)
-		// gocv.NewWindow("straightened").IMShow(scbRegion)
 	}
 
 	return straightChessboard{
@@ -910,11 +906,16 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 
 	for cidx, colorModel := range colorModels {
 		mask := predictCheckerColor(frame, colorModel, colorSpaceFactor)
+
+		// Erode and dilate the mask to remove noise
+		gocv.MorphologyEx(mask, &mask, gocv.MorphErode, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(3, 3)))
+		gocv.MorphologyEx(mask, &mask, gocv.MorphDilate, gocv.GetStructuringElement(gocv.MorphEllipse, image.Pt(5, 5)))
+
 		maskClone := mask.Clone()
 		masks[cidx].Push(&maskClone)
 		mask.Close()
 
-		if masks[cidx].Size() >= 3 {
+		if masks[cidx].Size() >= 2 {
 			masksSum := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8U)
 			defer masksSum.Close()
 			for maskPast := range masks[cidx].Iter() {
@@ -938,8 +939,6 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 	}
 
 	findCornerDots(dotsMask)
-
-	gocv.NewWindow("Detection").IMShow(frame)
 }
 
 // Main calibration function that calibrates the webcam projection space and the checker color models
@@ -1065,12 +1064,10 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		quadrantWindows[qidx] = gocv.NewWindow(fmt.Sprintf("Quadrant %d", qidx))
 	}
 
-	saturation := 70
-	value := 47
 	trackbarsS := debugwindow.CreateTrackbar("Saturation", 255)
-	trackbarsS.SetPos(saturation)
+	trackbarsS.SetPos(INIT_SAT_VAL)
 	trackbarsV := debugwindow.CreateTrackbar("Value", 255)
-	trackbarsV.SetPos(value)
+	trackbarsV.SetPos(INIT_VAL_VAL)
 
 	colorHistSums := make([]gocv.Mat, NB_CLRD_CHCKRS)
 	nonColorHistSums := make([]gocv.Mat, NB_CLRD_CHCKRS)
@@ -1092,9 +1089,9 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 	}
 
 	scChsBrd := straightChessboard{}
+	prevTS := time.Now()
 
 	for {
-		start := time.Now()
 		if ok := fi.webcam.Read(&fi.img); !ok {
 			break
 		}
@@ -1158,8 +1155,9 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 
 				scChsBrd = calcStraightChessboard(frame, cornerDotVector, cbCheckersR3, mtx, dist, lastRvec, lastTvec, termCriteria)
 				fmt.Println("ROI", scChsBrd.roi)
-				fmt.Println(scChsBrd.mapx.Rows(), scChsBrd.mapy.Cols())
-
+				fmt.Println("M")
+				PrintMatValues64F(scChsBrd.M)
+				fmt.Println("Rows,Cols", scChsBrd.mapx.Rows(), scChsBrd.mapy.Cols())
 				fmt.Println("=== Calibrated! === Reprojection error:", reprojError)
 				isCalibrated = true
 			}
@@ -1247,14 +1245,15 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 					c, mr, rb, mb,
 				}
 
-				isAllCircleMasksSeen, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels, &nbHistsSampled,
-					quadrantWindows, trackbarsS, trackbarsV)
+				isAllCircleMasksSeen, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels,
+					&nbHistsSampled, quadrantWindows, trackbarsS, trackbarsV)
 
 				if isSheetCalibrated {
 					for qidx := range quadrantWindows {
 						quadrantWindows[qidx].Close()
 					}
 					fmt.Println("=== Sheet calibrated! ===")
+					break
 				}
 
 			} else {
@@ -1280,11 +1279,13 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 			gocv.DrawChessboardCorners(&fi.img, image.Pt(W, H), corners, isChkbrdFound)
 		}
 
-		fps := time.Second / time.Since(start)
 		exposureTime := getWebcamExposureTime()
 		whiteBalanceTemperature := getWebcamwhiteBalanceTemperature()
 
-		prettyPutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(10, 15), colorWhite, 0.4)
+		currentTS := time.Now()
+		elapsedTime := currentTS.Sub(prevTS)
+		fps := float64(time.Second) / float64(elapsedTime)
+		prettyPutText(&fi.img, fmt.Sprintf("FPS: %.2f", fps), image.Pt(10, 15), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("%s (%d, %d)", fndStr, nbChkBrdFound, nbHistsSampled), image.Pt(10, 30), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("ExposureTime: %d, WhiteBalanceTemp.: %d", exposureTime, whiteBalanceTemperature), image.Pt(10, 45), colorWhite, 0.4)
 		prettyPutText(&fi.img, fmt.Sprintf("isCalibrated: %t, isLocked: %t, isModeled: %t, isSheetCalibrated: %t", isCalibrated, isLocked, isModeled, isSheetCalibrated), image.Pt(10, 60), colorWhite, 0.4)
@@ -1321,12 +1322,55 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugwindow, projection *g
 		if key >= 0 {
 			fmt.Println("Key:", key)
 		}
+
+		prevTS = time.Now()
+	}
+
+	fi.debugWindow.Close()
+	fi.projection.Close()
+	fi.projection = gocv.NewWindow("Projection")
+	fi.projection.ResizeWindow(beamerWidth, beamerHeight)
+
+	for cidx := 0; cidx < len(colorModels); cidx++ {
+		colorHistSums[cidx].Close()
+		nonColorHistSums[cidx].Close()
+	}
+
+	if isSheetCalibrated {
+		prevTS := time.Now()
+
+		for {
+			if ok := fi.webcam.Read(&fi.img); !ok {
+				break
+			}
+			if fi.img.Empty() {
+				continue
+			}
+
+			frame := fi.img.Clone()
+			defer frame.Close()
+			frameRegion := gocv.NewMat()
+			defer frameRegion.Close()
+			frameRegion = straightenChessboard(frame, scChsBrd)
+
+			detectColors(frameRegion, colorModels, masks, colorSpaceFactor)
+
+			currentTS := time.Now()
+			elapsedTime := currentTS.Sub(prevTS)
+			fps := float64(time.Second) / float64(elapsedTime)
+			prettyPutText(&frameRegion, fmt.Sprintf("FPS: %.2f", fps), image.Pt(10, 15), colorWhite, 0.4)
+			fi.projection.IMShow(frameRegion)
+
+			key := fi.debugWindow.WaitKey(WAIT)
+			if key == 27 {
+				break
+			}
+			prevTS = time.Now()
+		}
 	}
 
 	for cidx := 0; cidx < len(colorModels); cidx++ {
 		colorModels[cidx].Close()
-		colorHistSums[cidx].Close()
-		nonColorHistSums[cidx].Close()
 	}
 
 	scChsBrd.M.Close()
