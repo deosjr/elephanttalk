@@ -26,12 +26,15 @@ func lockWebcam(exposureTime, whiteBalanceTemperature int) {
 		"-c", fmt.Sprintf("exposure_time_absolute=%d", exposureTime),
 		"-c", "white_balance_automatic=0",
 		"-c", fmt.Sprintf("white_balance_temperature=%d", whiteBalanceTemperature))
-	output, err := cmd.Output()
+	_, err := cmd.Output()
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("Command output: %s\n", output)
+	// fmt.Printf("Command output: %s\n", output)
+	exposureTime = getWebcamExposureTime()
+	whiteBalanceTemperature = getWebcamwhiteBalanceTemperature()
+	fmt.Printf("Webcam locked with exposureTime=%d and whiteBalanceTemperature=%d\n", exposureTime, whiteBalanceTemperature)
 }
 
 func getWebcamExposureTime() int {

@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"time"
 
 	"github.com/deosjr/elephanttalk/opencv"
@@ -24,31 +25,29 @@ func Run() {
 		panic(err)
 	}
 	defer webcam.Close()
-	webcam.Set(gocv.VideoCaptureAutoWB, 0)
-	webcam.Set(gocv.VideoCaptureWBTemperature, 20)
 
 	debugwindow := gocv.NewWindow("debug")
 	defer debugwindow.Close()
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
 
-	// createSheets()
-	chessBoardCalibration(webcam, debugwindow, projection)
-	// cResults := chessBoardCalibration(webcam, debugwindow, projection)
-	// cResults.referenceColors = []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}}
-	// yellow mapped to black to avoid collisions
-	// cResults.referenceColors = []color.RGBA{{255, 0, 0, 0}, {0, 255, 0, 0}, {0, 0, 255, 0}, {0, 0, 0, 0}}
-	// cResults := calibration(webcam, debugwindow, projection)
-	// fmt.Println(cResults)
-	/*
-		cResults := calibrationResults{
-			pixelsPerCM:     8.33666,
-			displacement:    image.Pt(93, 0),
-			displayRatio:    0.93,
-			referenceColors: []color.RGBA{{201, 66, 67, 0}, {88, 101, 65, 0}, {74, 57, 88, 0}, {217, 109, 72, 0}},
+	filename := "calibration.json"
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		fmt.Println("Calibration file does not exist, starting calibration")
+		scChsBrd := chessBoardCalibration(webcam, debugwindow, projection)
+		if len(scChsBrd.ColorModels) > 0 {
+			defer scChsBrd.Close()
+			detectPattern(webcam, debugwindow, projection, scChsBrd)
 		}
-	*/
-	// vision(webcam, debugwindow, projection, cResults)
+
+	} else {
+		fmt.Println("Calibration file exists, skipping calibration")
+		scChsBrd := loadCalibration(filename)
+		if len(scChsBrd.ColorModels) > 0 {
+			defer scChsBrd.Close()
+			detectPattern(webcam, debugwindow, projection, scChsBrd)
+		}
+	}
 }
 
 type frameInput struct {

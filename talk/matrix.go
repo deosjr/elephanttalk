@@ -8,6 +8,52 @@ import (
 	"gocv.io/x/gocv"
 )
 
+func matToDoubleSlice64F(mat gocv.Mat) []float64 {
+	if !(mat.Type() == gocv.MatTypeCV64F || mat.Type() == gocv.MatTypeCV64FC3) {
+		fmt.Println("matToDoubleSlice64F mat type", mat.Type())
+		return nil
+	}
+	data, _ := mat.DataPtrFloat64()
+	return data
+}
+func matsToDoubleSlice64F(mats []gocv.Mat) [][]float64 {
+	var data [][]float64
+	for _, mat := range mats {
+		data = append(data, matToDoubleSlice64F(mat))
+	}
+	return data
+}
+
+func matToFloatSlice32F(mat gocv.Mat) []float32 {
+	if !(mat.Type() == gocv.MatTypeCV32F || mat.Type() == gocv.MatTypeCV32FC3) {
+		fmt.Println("matToFloatSlice32F mat type", mat.Type())
+		return nil
+	}
+	data, _ := mat.DataPtrFloat32()
+	return data
+}
+
+func matsToFloatSlice32F(mats []gocv.Mat) [][]float32 {
+	var data [][]float32
+	for _, mat := range mats {
+		data = append(data, matToFloatSlice32F(mat))
+	}
+	return data
+}
+
+func matToFloatSlice16S(mat gocv.Mat) []int32 {
+	var data []int32
+	rows := mat.Rows()
+	cols := mat.Cols()
+	for c := 0; c < cols; c++ {
+		for r := 0; r < rows; r++ {
+			value := mat.GetIntAt(r, c)
+			data = append(data, value)
+		}
+	}
+	return data
+}
+
 // Print3DMatValues prints all the values of a 3D gocv.Mat in a structured tabular format
 func PrintMatValues64F(mat gocv.Mat) {
 	// Assume mat is a 3D matrix where each point is a single float
@@ -49,7 +95,21 @@ func PrintMatValues64FC(mat gocv.Mat) {
 	}
 }
 
-func PrintMatValues32FC3(mat gocv.Mat) {
+func PrintMatValues32F(mat gocv.Mat) {
+	// Assume mat is a 3D matrix where each point is a single float
+	rows := mat.Rows()
+	cols := mat.Cols()
+
+	for c := 0; c < cols; c++ {
+		for r := 0; r < rows; r++ {
+			val := mat.GetFloatAt(r, c)
+			fmt.Printf("%9.8f ", val)
+		}
+		fmt.Println() // New line for each row
+	}
+}
+
+func PrintMatValues32FC(mat gocv.Mat) {
 	// Assume mat is a 3D matrix where each point is a single float
 	rows := mat.Size()[0]
 	cols := mat.Size()[1]
@@ -67,6 +127,74 @@ func PrintMatValues32FC3(mat gocv.Mat) {
 		fmt.Println() // Extra new line after each depth slice
 	}
 }
+
+func matToFloatSlice32FC(mat gocv.Mat) []float32 {
+	if mat.Type() != gocv.MatTypeCV32F {
+		fmt.Println("mat type", mat.Type())
+		return nil
+	}
+	data, _ := mat.DataPtrFloat32()
+	return data
+}
+
+func matsToFloatSlice32FC(mats []gocv.Mat) [][]float32 {
+	var data [][]float32
+	for _, mat := range mats {
+		data = append(data, matToFloatSlice32FC(mat))
+	}
+	return data
+}
+
+func doubleSliceToMat64F(data []float64, rows, cols, channels int) (gocv.Mat, error) {
+	data_bytes := make([]byte, len(data)*8)
+	for i := 0; i < len(data); i++ {
+		bits := *(*uint64)(unsafe.Pointer(&data[i]))
+		binary.LittleEndian.PutUint64(data_bytes[i*8:i*8+8], bits)
+	}
+	if channels == 1 {
+		return gocv.NewMatFromBytes(rows, cols, gocv.MatTypeCV64F, data_bytes)
+	} else if channels == 3 {
+		return gocv.NewMatFromBytes(rows, cols, gocv.MatTypeCV64FC3, data_bytes)
+	}
+	return gocv.NewMat(), fmt.Errorf("invalid number of channels")
+}
+
+func doubleSliceToNDMat64F(data []float64, sizes []int) (gocv.Mat, error) {
+	data_bytes := make([]byte, len(data)*8)
+	for i := 0; i < len(data); i++ {
+		bits := *(*uint64)(unsafe.Pointer(&data[i]))
+		binary.LittleEndian.PutUint64(data_bytes[i*8:i*8+8], bits)
+	}
+	return gocv.NewMatWithSizesFromBytes(sizes, gocv.MatTypeCV64F, data_bytes)
+
+}
+
+func floatSliceToMat32F(data []float64, rows, cols, channels int) (gocv.Mat, error) {
+	mat, err := doubleSliceToMat64F(data, rows, cols, channels)
+	if err != nil {
+		fmt.Println("Error creating mat")
+		return gocv.NewMat(), err
+	}
+	mat.ConvertTo(&mat, gocv.MatTypeCV32F)
+	return mat, err
+}
+
+func floatToMats32F(data [][]float64, sizes []int, nbMats int) ([]gocv.Mat, error) {
+	mats := make([]gocv.Mat, nbMats)
+	for i := 0; i < nbMats; i++ {
+		mat, err := doubleSliceToNDMat64F(data[i], sizes)
+		if err == nil {
+			mats[i] = gocv.NewMat()
+			mat.ConvertTo(&mats[i], gocv.MatTypeCV32F)
+		} else {
+			fmt.Println("Error creating mat", i)
+			errMsg := fmt.Errorf("error creating mat %d", i)
+			return nil, errMsg
+		}
+	}
+	return mats, nil
+}
+
 func PrintMatValues32I(mat gocv.Mat) {
 	// Assume mat is a 3D matrix where each point is a single float
 	rows := mat.Rows()
