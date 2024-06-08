@@ -1,10 +1,12 @@
 package talk
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"math"
+	"os"
 
 	"gocv.io/x/gocv"
 )
@@ -215,4 +217,69 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 
 	// TODO: happy (y/n) ? if no return to start of calibration
 	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples}
+}
+
+type straightChessboard struct {
+	Rotation    gocv.Mat
+	Translation gocv.Mat
+	Camera      gocv.Mat
+	Distortion  gocv.Mat
+	MapX        gocv.Mat
+	MapY        gocv.Mat
+	Roi         image.Rectangle
+	M           gocv.Mat
+	Csf         float64
+	ColorModels []gocv.Mat
+}
+
+func (sc *straightChessboard) UnMarshalJSON(data []byte) error {
+	type Alias straightChessboard
+	aux := &struct {
+		Translation []float64
+		Rotation    []float64
+		Camera      []float64
+		Distortion  []float64
+		MapX        []float64
+		MapY        []float64
+		Roi         string
+		M           []float64
+		Csf         float64
+		ColorModels [][]float64
+		*Alias
+	}{
+		Alias: (*Alias)(sc),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	sc.Translation, _ = doubleSliceToMat64F(aux.Translation, 3, 1, 1)
+	sc.Rotation, _ = doubleSliceToMat64F(aux.Rotation, 3, 1, 1)
+	sc.Camera, _ = doubleSliceToMat64F(aux.Camera, 3, 3, 1)
+	sc.Distortion, _ = doubleSliceToMat64F(aux.Distortion, 5, 1, 1)
+	sc.MapX, _ = floatSliceToMat32F(aux.MapX, WEBCAM_HEIGHT, WEBCAM_WIDTH, 1)
+	sc.MapY, _ = floatSliceToMat32F(aux.MapY, WEBCAM_HEIGHT, WEBCAM_WIDTH, 1)
+	sc.Roi = stringToRect(aux.Roi)
+	sc.M, _ = doubleSliceToMat64F(aux.M, 3, 3, 1)
+	// sc.Csf = aux.Csf
+	// sizes := []int{HIST_SIZE, HIST_SIZE, HIST_SIZE}
+	// sc.ColorModels, _ = floatToMats32F(aux.ColorModels, sizes, NB_CLRD_CHCKRS)
+
+	return nil
+}
+
+func loadCalibration(file string) straightChessboard {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	scChsBrd := straightChessboard{}
+	err = scChsBrd.UnMarshalJSON(b)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return scChsBrd
 }
