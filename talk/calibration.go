@@ -180,9 +180,9 @@ func (sc *straightChessboard) UnMarshalJSON(data []byte) error {
 	sc.MapY, _ = floatSliceToMat32F(aux.MapY, WEBCAM_HEIGHT, WEBCAM_WIDTH, 1)
 	sc.Roi = stringToRect(aux.Roi)
 	sc.M, _ = doubleSliceToMat64F(aux.M, 3, 3, 1)
-	sc.Csf = aux.Csf
-	sizes := []int{HIST_SIZE, HIST_SIZE, HIST_SIZE}
-	sc.ColorModels, _ = floatToMats32F(aux.ColorModels, sizes, NB_CLRD_CHCKRS)
+	// sc.Csf = aux.Csf
+	// sizes := []int{HIST_SIZE, HIST_SIZE, HIST_SIZE}
+	// sc.ColorModels, _ = floatToMats32F(aux.ColorModels, sizes, NB_CLRD_CHCKRS)
 
 	return nil
 }
@@ -1253,7 +1253,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 		M:           gocv.NewMat(),
 	}
 
-	K := NB_CLRD_CHCKRS + 1
+	// K := NB_CLRD_CHCKRS + 1
 	labels := gocv.NewMat()
 	defer labels.Close()
 	centers := gocv.NewMat()
@@ -1269,7 +1269,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 	// defer cbSheet.Close()
 	// getSheet('z', &cbSheet)
 
-	isFirstKIter := true
+	// isFirstKIter := true
 	prevTS := time.Now()
 	for {
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -1336,109 +1336,111 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 				fmt.Println("Rows,Cols", scChsBrd.MapX.Rows(), scChsBrd.MapY.Cols())
 				fmt.Println("=== Calibrated! === Reprojection error:", reprojError)
 				isCalibrated = true
-			}
-
-		} else if isChkbrdFound && isCalibrated {
-			point2fVector := gocv.NewPoint2fVectorFromMat(corners)
-			defer point2fVector.Close()
-			inliers := gocv.NewMat()
-			defer inliers.Close()
-			gocv.SolvePnPRansac(cbCheckersR3, point2fVector, mtx, dist, &rvec, &tvec, false, 100, 8, 0.99, &inliers, 0)
-
-			if !isModeled {
-				cornerPointsProj := projectCornerPoints(cornerDotVector, mtx, dist, rvec, tvec)
-				cornersWindow := gocv.NewWindow("corners")
-				sampleColors(frame, cornerPointsProj, colorHistSums, nonColorHistSums, cornersWindow)
-
-				nbHistsSampled++
-
-				if nbHistsSampled > MIN_NB_COLOR_SAMPLES {
-					for cidx := 0; cidx < len(colorModels); cidx++ {
-						colorSpaceFactor, _ = calcBayesColorModel(colorHistSums[cidx], nonColorHistSums[cidx], &colorModels[cidx])
-						fmt.Println("=== Checker colors modeled! ===")
-					}
-
-					isModeled = true
-					cornersWindow.Close()
-				}
+				isSheetCalibrated = true
+				break
 			}
 		}
+		// else if isChkbrdFound && isCalibrated {
+		// 	point2fVector := gocv.NewPoint2fVectorFromMat(corners)
+		// 	defer point2fVector.Close()
+		// 	inliers := gocv.NewMat()
+		// 	defer inliers.Close()
+		// 	gocv.SolvePnPRansac(cbCheckersR3, point2fVector, mtx, dist, &rvec, &tvec, false, 100, 8, 0.99, &inliers, 0)
 
-		isAllCircleMasksSeen := false
-		if isModeled && !isSheetCalibrated {
-			nbFRcts, rectangles := predictCheckerColors(frame, &fi.img, colorModels, colorSpaceFactor)
-			quadrants := [4][4]image.Point{}
+		// 	if !isModeled {
+		// 		cornerPointsProj := projectCornerPoints(cornerDotVector, mtx, dist, rvec, tvec)
+		// 		cornersWindow := gocv.NewWindow("corners")
+		// 		sampleColors(frame, cornerPointsProj, colorHistSums, nonColorHistSums, cornersWindow)
 
-			if nbFRcts >= 4 {
-				// Draw some lines to visualize the quadrants
-				lt := rectangles[0].Min
-				rt := image.Pt(rectangles[1].Max.X, rectangles[1].Min.Y)
-				lb := image.Pt(rectangles[2].Min.X, rectangles[2].Max.Y)
-				rb := rectangles[3].Max
+		// 		nbHistsSampled++
 
-				mt := image.Point{
-					X: (lt.X + rt.X) / 2,
-					Y: (lt.Y + rt.Y) / 2,
-				}
-				ml := image.Point{
-					X: (lt.X + lb.X) / 2,
-					Y: (lt.Y + lb.Y) / 2,
-				}
-				mr := image.Point{
-					X: (rt.X + rb.X) / 2,
-					Y: (rt.Y + rb.Y) / 2,
-				}
-				mb := image.Point{
-					X: (lb.X + rb.X) / 2,
-					Y: (lb.Y + rb.Y) / 2,
-				}
-				c := image.Point{
-					X: (lt.X + rb.X) / 2,
-					Y: (lt.Y + rb.Y) / 2,
-				}
+		// 		if nbHistsSampled > MIN_NB_COLOR_SAMPLES {
+		// 			for cidx := 0; cidx < len(colorModels); cidx++ {
+		// 				colorSpaceFactor, _ = calcBayesColorModel(colorHistSums[cidx], nonColorHistSums[cidx], &colorModels[cidx])
+		// 				fmt.Println("=== Checker colors modeled! ===")
+		// 			}
 
-				gocv.Line(&fi.img, lt, rt, colorBlack, 1)
-				gocv.Line(&fi.img, rt, rb, colorBlack, 1)
-				gocv.Line(&fi.img, rb, lb, colorBlack, 1)
-				gocv.Line(&fi.img, lb, lt, colorBlack, 1)
-				gocv.Line(&fi.img, mt, mb, colorBlack, 1)
-				gocv.Line(&fi.img, ml, mr, colorBlack, 1)
+		// 			isModeled = true
+		// 			cornersWindow.Close()
+		// 		}
+		// 	}
+		// }
 
-				quadrants[0] = [4]image.Point{
-					lt, mt, c, ml,
-				}
-				quadrants[1] = [4]image.Point{
-					mt, rt, mr, c,
-				}
-				quadrants[2] = [4]image.Point{
-					ml, c, mb, lb,
-				}
-				quadrants[3] = [4]image.Point{
-					c, mr, rb, mb,
-				}
+		// isAllCircleMasksSeen := false
+		// if isModeled && !isSheetCalibrated {
+		// 	nbFRcts, rectangles := predictCheckerColors(frame, &fi.img, colorModels, colorSpaceFactor)
+		// 	quadrants := [4][4]image.Point{}
 
-				_, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels,
-					&nbHistsSampled, quadrantWindows, trackbarsS, trackbarsV)
+		// 	if nbFRcts >= 4 {
+		// 		// Draw some lines to visualize the quadrants
+		// 		lt := rectangles[0].Min
+		// 		rt := image.Pt(rectangles[1].Max.X, rectangles[1].Min.Y)
+		// 		lb := image.Pt(rectangles[2].Min.X, rectangles[2].Max.Y)
+		// 		rb := rectangles[3].Max
 
-				if isSheetCalibrated {
-					for qidx := range quadrantWindows {
-						quadrantWindows[qidx].Close()
-					}
-					fmt.Println("=== Sheet calibrated! ===")
-					break
-				}
+		// 		mt := image.Point{
+		// 			X: (lt.X + rt.X) / 2,
+		// 			Y: (lt.Y + rt.Y) / 2,
+		// 		}
+		// 		ml := image.Point{
+		// 			X: (lt.X + lb.X) / 2,
+		// 			Y: (lt.Y + lb.Y) / 2,
+		// 		}
+		// 		mr := image.Point{
+		// 			X: (rt.X + rb.X) / 2,
+		// 			Y: (rt.Y + rb.Y) / 2,
+		// 		}
+		// 		mb := image.Point{
+		// 			X: (lb.X + rb.X) / 2,
+		// 			Y: (lb.Y + rb.Y) / 2,
+		// 		}
+		// 		c := image.Point{
+		// 			X: (lt.X + rb.X) / 2,
+		// 			Y: (lt.Y + rb.Y) / 2,
+		// 		}
 
-			} else {
-				fmt.Println("Not enough rectangles found: ", nbFRcts)
-			}
+		// 		gocv.Line(&fi.img, lt, rt, colorBlack, 1)
+		// 		gocv.Line(&fi.img, rt, rb, colorBlack, 1)
+		// 		gocv.Line(&fi.img, rb, lb, colorBlack, 1)
+		// 		gocv.Line(&fi.img, lb, lt, colorBlack, 1)
+		// 		gocv.Line(&fi.img, mt, mb, colorBlack, 1)
+		// 		gocv.Line(&fi.img, ml, mr, colorBlack, 1)
 
-		} else if isSheetCalibrated && !frameRegion.Empty() {
-			// Use color models on straightened chessboard to detect the colors
-			kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteriaK, isFirstKIter)
-			defer kMeansImage.Close()
-			detectColors(kMeansImage, colorModels, masks, colorSpaceFactor)
-			isFirstKIter = false
-		}
+		// 		quadrants[0] = [4]image.Point{
+		// 			lt, mt, c, ml,
+		// 		}
+		// 		quadrants[1] = [4]image.Point{
+		// 			mt, rt, mr, c,
+		// 		}
+		// 		quadrants[2] = [4]image.Point{
+		// 			ml, c, mb, lb,
+		// 		}
+		// 		quadrants[3] = [4]image.Point{
+		// 			c, mr, rb, mb,
+		// 		}
+
+		// 		_, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels,
+		// 			&nbHistsSampled, quadrantWindows, trackbarsS, trackbarsV)
+
+		// 		if isSheetCalibrated {
+		// 			for qidx := range quadrantWindows {
+		// 				quadrantWindows[qidx].Close()
+		// 			}
+		// 			fmt.Println("=== Sheet calibrated! ===")
+		// 			break
+		// 		}
+
+		// 	} else {
+		// 		fmt.Println("Not enough rectangles found: ", nbFRcts)
+		// 	}
+
+		// } else if isSheetCalibrated && !frameRegion.Empty() {
+		// 	// Use color models on straightened chessboard to detect the colors
+		// 	kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteriaK, isFirstKIter)
+		// 	defer kMeansImage.Close()
+		// 	detectColors(kMeansImage, colorModels, masks, colorSpaceFactor)
+		// 	isFirstKIter = false
+		// }
 
 		// if isCalibrated && !isLocked {
 		// 	// lockWebcam(exposureTime, whiteBalanceTemperature)
@@ -1471,18 +1473,18 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 				color = colorGreen
 			}
 			prettyPutText(&fi.img, "Place the checkerboard", image.Pt(10, 75), color, 0.3)
-
-		} else if isCalibrated && !isModeled {
-			prettyPutText(&fi.img, "Sampling colors ...", image.Pt(10, 75), colorGreen, 0.3)
-
-		} else if isModeled && !isSheetCalibrated {
-			color := colorRed
-			if isAllCircleMasksSeen {
-				color = colorGreen
-			}
-			prettyPutText(&fi.img, "Adjust the sliders until you only see the four colored checkers in the corners of the four quadrant windows.", image.Pt(10, 75), color, 0.3)
-			prettyPutText(&fi.img, "Then, hold the calibration sheet in the middle, aligning each calibration color on the sheet to each quadrant color.", image.Pt(10, 85), color, 0.3)
 		}
+		// else if isCalibrated && !isModeled {
+		// 	prettyPutText(&fi.img, "Sampling colors ...", image.Pt(10, 75), colorGreen, 0.3)
+
+		// } else if isModeled && !isSheetCalibrated {
+		// 	color := colorRed
+		// 	if isAllCircleMasksSeen {
+		// 		color = colorGreen
+		// 	}
+		// 	prettyPutText(&fi.img, "Adjust the sliders until you only see the four colored checkers in the corners of the four quadrant windows.", image.Pt(10, 75), color, 0.3)
+		// 	prettyPutText(&fi.img, "Then, hold the calibration sheet in the middle, aligning each calibration color on the sheet to each quadrant color.", image.Pt(10, 85), color, 0.3)
+		// }
 
 		fi.debugWindow.IMShow(fi.img)
 		fi.projection.IMShow(fi.cimg)

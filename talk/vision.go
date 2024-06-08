@@ -20,7 +20,7 @@ var (
 )
 
 func Run() {
-	webcam, err := gocv.VideoCaptureDevice(6)
+	webcam, err := gocv.VideoCaptureDevice(0)
 	if err != nil {
 		panic(err)
 	}
@@ -45,11 +45,11 @@ func Run() {
 	} else {
 		fmt.Println("Calibration file exists, skipping calibration")
 		scChsBrd := loadCalibration(filename)
-		if len(scChsBrd.ColorModels) > 0 {
-			defer scChsBrd.Close()
-			// detectPattern(webcam, debugwindow, projection, scChsBrd)
-			vision(webcam, debugwindow, projection, scChsBrd)
-		}
+		vision(webcam, debugwindow, projection, scChsBrd)
+		// if len(scChsBrd.ColorModels) > 0 {
+		// 	defer scChsBrd.Close()
+		// 	// detectPattern(webcam, debugwindow, projection, scChsBrd)
+		// }
 	}
 }
 
@@ -69,13 +69,13 @@ func colorRGBAtoScalar(c color.RGBA) gocv.Scalar {
 }
 
 func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, []color.RGBA), waitMillis int) error {
-	isFirstIter := true
-	K := NB_CLRD_CHCKRS + 1
+	// isFirstIter := true
+	// K := NB_CLRD_CHCKRS + 1
 	labels := gocv.NewMat()
 	defer labels.Close()
 	centers := gocv.NewMat()
 	defer centers.Close()
-	termCriteria := gocv.NewTermCriteria(gocv.EPS+gocv.Count, 10, 1.0)
+	// termCriteria := gocv.NewTermCriteria(gocv.EPS+gocv.Count, 10, 1.0)
 
 	cbCanvas := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
 	defer cbCanvas.Close()
@@ -92,8 +92,8 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, 
 		frameRegion := beamerToChessboard(fi.img, fi.calibBoard)
 		defer frameRegion.Close()
 
-		kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteria, isFirstIter)
-		defer kMeansImage.Close()
+		// kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteria, isFirstIter)
+		// defer kMeansImage.Close()
 
 		// fmt.Println("centers")
 		// PrintMatValues32F(centers)
@@ -127,11 +127,11 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, 
 
 			referenceColors = append(referenceColors, bestColor)
 		}
-		isFirstIter = false
+		// isFirstIter = false
 
 		// since detect draws in img, we take a snapshot first
 		actualImage, _ := fi.img.ToImage()
-		spatialPartition := detect(kMeansImage, actualImage, referenceColors)
+		spatialPartition := detect(frameRegion, actualImage, referenceColors)
 
 		f(actualImage, spatialPartition, referenceColors)
 
@@ -139,7 +139,7 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, 
 		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
 
 		fi.debugWindow.IMShow(fi.img)
-		gocv.NewWindow("kmeans").IMShow(kMeansImage)
+		gocv.NewWindow("frameRegion").IMShow(frameRegion)
 		key := fi.debugWindow.WaitKey(waitMillis)
 
 		getSheet(key, &cbCanvas)
@@ -150,7 +150,7 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, 
 	}
 }
 
-func vision(webcam *gocv.VideoCapture, debugwindow, projection, scChsBrd straightChessboard) {
+func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, scChsBrd straightChessboard) {
 	img := gocv.NewMat()
 	defer img.Close()
 	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
