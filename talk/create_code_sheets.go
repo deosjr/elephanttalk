@@ -39,19 +39,17 @@ var cornerDots = []image.Point{
 	image.Pt(chessWidth-1, chessHeight),
 }
 
-func drawChessBoard() gocv.Mat {
-	img := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+func drawChessBoard(img *gocv.Mat) {
 	img.SetTo(gocv.NewScalar(255, 255, 255, 0))
 
 	for i := 0; i < chessHeight; i++ {
 		for j := 0; j < chessWidth; j++ {
 			if (i+j)%2 == 0 {
 				rect := image.Rect(j*blockWidth, i*blockHeight, (j+1)*blockWidth, (i+1)*blockHeight)
-				gocv.Rectangle(&img, rect, color.RGBA{0, 0, 0, 0}, -1)
+				gocv.Rectangle(img, rect, color.RGBA{0, 0, 0, 0}, -1)
 			}
 		}
 	}
-	return img
 }
 
 func drawCorners(img *gocv.Mat) {
@@ -75,7 +73,7 @@ func drawCorners(img *gocv.Mat) {
 		ptsp := [][]image.Point{pts}
 		pointsVector := gocv.NewPointsVectorFromPoints(ptsp)
 		defer pointsVector.Close()
-		color := cornerColors[cidx/4]
+		color := cornerColors[1+(cidx/4)]
 		gocv.FillPoly(img, pointsVector, color)
 	}
 }
@@ -148,9 +146,9 @@ func drawCode(height, width int) gocv.Mat {
 	}
 
 	for _, p := range codePattern {
-		randomColorIndex := rand.Intn(len(cornerColors))
+		randomColorIndex := rand.Intn(len(cornerColors) - 1)
 		center := image.Pt(p.Y*blockWidth+blockWidth/2, p.X*blockHeight+blockHeight/2)
-		gocv.Circle(&codeImage, center, 47, cornerColors[randomColorIndex], -1)
+		gocv.Circle(&codeImage, center, 47, cornerColors[randomColorIndex+1], -1)
 	}
 
 	return codeImage
@@ -161,7 +159,7 @@ func placeCalibrationPattern(canvas *gocv.Mat) {
 	height := canvas.Rows()
 	for r := 0; r < 2; r++ {
 		for c := 0; c < 2; c++ {
-			color := cornerColors[r*2+c]
+			color := cornerColors[1+(r*2+c)]
 			center := image.Pt((width/2)+((c-1)*blockWidth)+blockWidth/2, (height/2)+((r-1)*blockHeight+blockWidth/2))
 			gocv.CircleWithParams(canvas, center, (blockWidth / 3), color, -1, gocv.LineAA, 0)
 		}
@@ -216,44 +214,46 @@ func placeCodes(canvas *gocv.Mat) {
 	}
 }
 
+func getSheet(key int, img *gocv.Mat) {
+	switch key {
+	case 'z':
+		*img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+	case 'x':
+		*img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+		drawChessBoard(img)
+		drawCorners(img)
+	case 'c':
+		*img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+		drawCorners(img)
+		placeCalibrationPattern(img)
+	case 'v':
+		*img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+		drawCorners(img)
+	case 'b':
+		*img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+		drawChessBoard(img)
+	case 'a':
+		*img = gocv.NewMatWithSize(canvasHeight, canvasWidth, gocv.MatTypeCV8UC3)
+		img.SetTo(gocv.NewScalar(255, 255, 255, 0))
+		placeCodes(img)
+	}
+}
+
 func createSheets() {
 	window := gocv.NewWindow("projection")
-	img := drawChessBoard()
+	img := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+	defer img.Close()
+	drawChessBoard(&img)
 	drawCorners(&img)
 
 	for {
-		window.IMShow(img)
 		key := window.WaitKey(1)
-		switch key {
-		case 27: // ESC
-			img.Close()
-			return
-		case 'z':
-			img.Close()
-			img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
-			img.SetTo(gocv.NewScalar(255, 255, 255, 0))
-		case 'x':
-			img.Close()
-			img = drawChessBoard()
-			drawCorners(&img)
-		case 'c':
-			img.Close()
-			img = gocv.NewMatWithSize(chessHeight*blockHeight*1.5, chessWidth*blockWidth*1.5, gocv.MatTypeCV8UC3)
-			img.SetTo(gocv.NewScalar(255, 255, 255, 0))
-			placeCalibrationPattern(&img)
-		case 'v':
-			img.Close()
-			img = gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
-			img.SetTo(gocv.NewScalar(255, 255, 255, 0))
-			drawCorners(&img)
-		case 'b':
-			img.Close()
-			img = drawChessBoard()
-		case 'a':
-			img.Close()
-			img = gocv.NewMatWithSize(canvasHeight, canvasWidth, gocv.MatTypeCV8UC3)
-			img.SetTo(gocv.NewScalar(255, 255, 255, 0))
-			placeCodes(&img)
-		}
+		getSheet(key, &img)
+		window.IMShow(img)
 	}
 }

@@ -15,12 +15,12 @@ import (
 var (
 	// detected from webcam output instead!
 	//webcamWidth, webcamHeight = 1280, 720
-	// beamerWidth, beamerHeight = 1280, 720
-	beamerWidth, beamerHeight = 1920, 1080
+	beamerWidth, beamerHeight = 1280, 720
+	// beamerWidth, beamerHeight = 1920, 1080
 )
 
 func Run() {
-	webcam, err := gocv.VideoCaptureDevice(0)
+	webcam, err := gocv.VideoCaptureDevice(6)
 	if err != nil {
 		panic(err)
 	}
@@ -30,6 +30,8 @@ func Run() {
 	defer debugwindow.Close()
 	projection := gocv.NewWindow("projector")
 	defer projection.Close()
+	// cbWindow := gocv.NewWindow("projection")
+	// defer cbWindow.Close()
 
 	filename := "calibration.json"
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
@@ -45,7 +47,8 @@ func Run() {
 		scChsBrd := loadCalibration(filename)
 		if len(scChsBrd.ColorModels) > 0 {
 			defer scChsBrd.Close()
-			detectPattern(webcam, debugwindow, projection, scChsBrd)
+			// detectPattern(webcam, debugwindow, projection, scChsBrd)
+			vision(webcam, debugwindow, projection, scChsBrd)
 		}
 	}
 }
@@ -57,9 +60,26 @@ type frameInput struct {
 	// TODO: should these be passed as ptrs?
 	img  gocv.Mat
 	cimg gocv.Mat
+
+	calibBoard straightChessboard
 }
 
-func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle), ref []color.RGBA, waitMillis int) error {
+func colorRGBAtoScalar(c color.RGBA) gocv.Scalar {
+	return gocv.NewScalar(float64(c.R), float64(c.G), float64(c.B), 0)
+}
+
+func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, []color.RGBA), waitMillis int) error {
+	isFirstIter := true
+	K := NB_CLRD_CHCKRS + 1
+	labels := gocv.NewMat()
+	defer labels.Close()
+	centers := gocv.NewMat()
+	defer centers.Close()
+	termCriteria := gocv.NewTermCriteria(gocv.EPS+gocv.Count, 10, 1.0)
+
+	cbCanvas := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+	defer cbCanvas.Close()
+
 	for {
 		start := time.Now()
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -68,25 +88,69 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle),
 		if fi.img.Empty() {
 			continue
 		}
+
+		frameRegion := beamerToChessboard(fi.img, fi.calibBoard)
+		defer frameRegion.Close()
+
+		kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteria, isFirstIter)
+		defer kMeansImage.Close()
+
+		// fmt.Println("centers")
+		// PrintMatValues32F(centers)
+		centers_32F, _ := centers.DataPtrFloat32()
+		referenceColorsUO := []color.RGBA{}
+		for i := 0; i < centers.Rows(); i++ {
+			// OPENCV IS BGR!
+			referenceColorsUO = append(referenceColorsUO, color.RGBA{uint8(centers_32F[i*3+2]), uint8(centers_32F[i*3+1]), uint8(centers_32F[i*3]), 0})
+		}
+
+		referenceColors := []color.RGBA{}
+		for c := 0; c < len(cornerColors); c++ {
+			bestColor := color.RGBA{}
+			bestColorDistance := 1000000.0
+			for r := 0; r < len(referenceColorsUO); r++ {
+				statColor := colorRGBAtoScalar(cornerColors[c])
+				refColor := colorRGBAtoScalar(referenceColorsUO[r])
+				statColorHSV := gocv.NewMat()
+				defer statColorHSV.Close()
+				refColorHSV := gocv.NewMat()
+				defer refColorHSV.Close()
+				gocv.CvtColor(gocv.NewMatFromScalar(statColor, gocv.MatTypeCV8UC3), &statColorHSV, gocv.ColorBGRToHSV)
+				gocv.CvtColor(gocv.NewMatFromScalar(refColor, gocv.MatTypeCV8UC3), &refColorHSV, gocv.ColorBGRToHSV)
+
+				colorDistance := math.Abs(float64(statColorHSV.GetUCharAt3(0, 0, 0)) - float64(refColorHSV.GetUCharAt3(0, 0, 0)))
+				if colorDistance < bestColorDistance {
+					bestColorDistance = colorDistance
+					bestColor = referenceColorsUO[r]
+				}
+			}
+
+			referenceColors = append(referenceColors, bestColor)
+		}
+		isFirstIter = false
+
 		// since detect draws in img, we take a snapshot first
 		actualImage, _ := fi.img.ToImage()
-		spatialPartition := detect(fi.img, actualImage, ref)
+		spatialPartition := detect(kMeansImage, actualImage, referenceColors)
 
-		f(actualImage, spatialPartition)
+		f(actualImage, spatialPartition, referenceColors)
 
 		fps := time.Second / time.Since(start)
 		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
 
 		fi.debugWindow.IMShow(fi.img)
-		// fi.projection.IMShow(fi.cimg)
+		gocv.NewWindow("kmeans").IMShow(kMeansImage)
 		key := fi.debugWindow.WaitKey(waitMillis)
+
+		getSheet(key, &cbCanvas)
+
 		if key >= 0 {
 			return nil
 		}
 	}
 }
 
-func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cResults calibrationResults) {
+func vision(webcam *gocv.VideoCapture, debugwindow, projection, scChsBrd straightChessboard) {
 	img := gocv.NewMat()
 	defer img.Close()
 	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
@@ -94,10 +158,11 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 	l := LoadRealTalk()
 	// translate to beamerspace
-	pixPerCM := cResults.pixelsPerCM
-	if cResults.displayRatio != 0 {
-		pixPerCM *= (1. / cResults.displayRatio) - 1.
-	}
+	// pixPerCM := cResults.pixelsPerCM
+	pixPerCM := 8.0
+	// if cResults.displayRatio != 0 {
+	// 	pixPerCM *= (1. / cResults.displayRatio) - 1.
+	// }
 	l.Eval(fmt.Sprintf("(define pixelsPerCM %f)", pixPerCM))
 
 	fi := frameInput{
@@ -106,6 +171,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		projection:  projection,
 		img:         img,
 		cimg:        cimg,
+		calibBoard:  scChsBrd,
 	}
 
 	// ttl in frames; essentially buffering page location for flaky detection
@@ -116,7 +182,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 	persistCorners := map[corner]persistPage{}
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, referenceColors []color.RGBA) {
+
 		clear(l)
 		datalogIDs := map[uint64]int{}
 
@@ -128,10 +195,13 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			persistCorners[k] = persistPage{v.id, v.ttl - 1}
 		}
 
-		gocv.Circle(&img, image.Pt(5, 5), 5, cResults.referenceColors[0], -1)
-		gocv.Circle(&img, image.Pt(15, 5), 5, cResults.referenceColors[1], -1)
-		gocv.Circle(&img, image.Pt(25, 5), 5, cResults.referenceColors[2], -1)
-		gocv.Circle(&img, image.Pt(35, 5), 5, cResults.referenceColors[3], -1)
+		gocv.Circle(&img, image.Pt(5, 5), 5, referenceColors[0], -1)
+		gocv.Circle(&img, image.Pt(15, 5), 5, referenceColors[1], -1)
+		gocv.Circle(&img, image.Pt(25, 5), 5, referenceColors[2], -1)
+		gocv.Circle(&img, image.Pt(35, 5), 5, referenceColors[3], -1)
+		gocv.Circle(&img, image.Pt(45, 5), 5, referenceColors[4], -1)
+
+		referenceColors = referenceColors[1:]
 
 		red := color.RGBA{255, 0, 0, 0}
 		green := color.RGBA{0, 255, 0, 0}
@@ -147,7 +217,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 		// find corners
 		for k, v := range spatialPartition {
-			corner, ok := findCorners(v, cResults.referenceColors)
+			corner, ok := findCorners(v, referenceColors)
 			if !ok {
 				continue
 			}
@@ -368,8 +438,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 			for _, pt := range pts {
 				ptsZ0 = append(ptsZ0, gocv.Point3f{float32(pt.x), float32(pt.y), 0})
 			}
-			objPts := gocv.NewPoint3fVectorFromPoints(ptsZ0)
-			gocv.ProjectPoints(objPts, cResults.rvec, cResults.tvec, cResults.mtx, cResults.dist, projPoints, &jacobian, 0)
+			//objPts := gocv.NewPoint3fVectorFromPoints(ptsZ0)
+			//gocv.ProjectPoints(objPts, cResults.rvec, cResults.tvec, cResults.mtx, cResults.dist, projPoints, &jacobian, 0)
 			for i, pt := range projPoints.ToPoints() {
 				pts[i] = point{float64(pt.X), float64(pt.Y)}
 			}
@@ -389,7 +459,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		}
 		opencv.Illus = []gocv.Mat{}
 
-	}, cResults.referenceColors, 10); err != nil {
+	}, 10); err != nil {
 		fmt.Println(err)
 	}
 }

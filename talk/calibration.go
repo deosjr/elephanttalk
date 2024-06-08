@@ -59,7 +59,7 @@ const WEBCAM_HEIGHT = 480
 const INIT_SAT_VAL = 100
 const INIT_VAL_VAL = 74
 const EXP_TIME = 200
-const WB_HEAT = 5750
+const WB_HEAT = 6920
 const NB_CLRD_CHCKRS = 4              // number of colored checkers
 const CW = 100                        // checker projected resolution (W) (pixels per checker, if you measure the checker size in mm, it can be that)
 const CH = 100                        // checker projected resolution (H) (pixels per checker, if you measure the checker size in mm, it can be that)
@@ -86,6 +86,7 @@ var termCriteriaK = gocv.NewTermCriteria(gocv.Count+gocv.EPS, 100, 0.2)
 //	}
 
 var cornerColors = []color.RGBA{
+	{0, 0, 0, 0},       //# white
 	{245, 32, 32, 255}, //# red
 	{75, 180, 13, 255}, //# green
 	{16, 96, 255, 255}, //# blue
@@ -379,7 +380,7 @@ func projectCornerPoints(cornerDotVector gocv.Point3fVector, mtx, dist, rvec, tv
 
 		cornerPointsProj = append(cornerPointsProj, []interface{}{
 			[]([]int){proj_pt1, proj_pt2, proj_pt3, proj_pt4},
-			cornerColors[pidx/4],
+			cornerColors[1:][pidx/4],
 		})
 	}
 
@@ -542,10 +543,10 @@ func predictCheckerColors(frame gocv.Mat, canvas *gocv.Mat, colorModels []gocv.M
 			}
 
 			color := gocv.NewScalar(
-				float64(cornerColors[pidx].B),
-				float64(cornerColors[pidx].G),
-				float64(cornerColors[pidx].R),
-				float64(cornerColors[pidx].A),
+				float64(cornerColors[pidx+1].B),
+				float64(cornerColors[pidx+1].G),
+				float64(cornerColors[pidx+1].R),
+				float64(cornerColors[pidx+1].A),
 			)
 			frameColor.SetTo(color)
 			frameColor.CopyToWithMask(canvas, masksSum)
@@ -835,10 +836,10 @@ func calibrateSheet(frame gocv.Mat, canvas *gocv.Mat, quadrants [4][4]image.Poin
 
 		for qidx := 0; qidx < len(quadrants); qidx++ {
 			color := gocv.NewScalar(
-				float64(cornerColors[qidx].B),
-				float64(cornerColors[qidx].G),
-				float64(cornerColors[qidx].R),
-				float64(cornerColors[qidx].A),
+				float64(cornerColors[qidx+1].B),
+				float64(cornerColors[qidx+1].G),
+				float64(cornerColors[qidx+1].R),
+				float64(cornerColors[qidx+1].A),
 			)
 			frameMasked := gocv.NewMatWithSizeFromScalar(color, frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
 			defer frameMasked.Close()
@@ -995,7 +996,10 @@ func beamerToChessboard(frame gocv.Mat, sc straightChessboard) gocv.Mat {
 }
 
 func chessboardToBeamer(frame gocv.Mat, sc straightChessboard) gocv.Mat {
-	return gocv.NewMat()
+	scbRegion := gocv.NewMat()
+	gocv.WarpPerspectiveWithParams(frame, &scbRegion, sc.M, image.Pt(sc.MapX.Cols(), sc.MapX.Rows()),
+		gocv.InterpolationLinear|gocv.WarpInverseMap, gocv.BorderConstant, colorBlack)
+	return scbRegion
 }
 
 func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorSpaceFactor float64) {
@@ -1023,10 +1027,10 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 			gocv.BitwiseOr(dotsMask, masksSum, &dotsMask)
 
 			color := gocv.NewScalar(
-				float64(cornerColors[cidx].B),
-				float64(cornerColors[cidx].G),
-				float64(cornerColors[cidx].R),
-				float64(cornerColors[cidx].A),
+				float64(cornerColors[cidx+1].B),
+				float64(cornerColors[cidx+1].G),
+				float64(cornerColors[cidx+1].R),
+				float64(cornerColors[cidx+1].A),
 			)
 			frameColor := gocv.NewMatWithSize(frame.Rows(), frame.Cols(), gocv.MatTypeCV8UC3)
 			defer frameColor.Close()
@@ -1036,6 +1040,63 @@ func detectColors(frame gocv.Mat, colorModels []gocv.Mat, masks []*Deque, colorS
 	}
 
 	findCornerDots(dotsMask)
+}
+
+func loadCalibration(file string) straightChessboard {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	scChsBrd := straightChessboard{}
+	err = scChsBrd.UnMarshalJSON(b)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return scChsBrd
+}
+
+func kMeansFrame(frameRegion gocv.Mat, K int, labels, centers *gocv.Mat, termCriteria gocv.TermCriteria, isFirstIter bool) gocv.Mat {
+	// frameRegionHSV := gocv.NewMat()
+	// defer frameRegionHSV.Close()
+
+	// gocv.CvtColor(frameRegion, &frameRegionHSV, gocv.ColorBGRToHSV)
+	// frameRegion8U_HSV := gocv.Split(frameRegionHSV)
+	// defer frameRegion8U_HSV[0].Close()
+	// defer frameRegion8U_HSV[1].Close()
+	// defer frameRegion8U_HSV[2].Close()
+	// // gocv.Threshold(frameRegion8U_HSV[0], &frameRegion8U_HSV[0], float32(tbs.GetPos()), 255, gocv.ThresholdBinary)
+	// // gocv.Threshold(frameRegion8U_HSV[1], &frameRegion8U_HSV[1], 60, 255, gocv.ThresholdBinary)
+	// // gocv.Threshold(frameRegion8U_HSV[2], &frameRegion8U_HSV[2], 0, 255, gocv.ThresholdBinary)
+	// gocv.Merge(frameRegion8U_HSV, &frameRegionHSV)
+	// gocv.CvtColor(frameRegionHSV, &frameRegion, gocv.ColorHSVToBGR)
+
+	frameRegion8UC3 := gocv.NewMat()
+	defer frameRegion8UC3.Close()
+	frameRegion.ConvertTo(&frameRegion8UC3, gocv.MatTypeCV8UC3)
+
+	frameRegion32FC3 := gocv.NewMat()
+	defer frameRegion32FC3.Close()
+	frameRegion.ConvertTo(&frameRegion32FC3, gocv.MatTypeCV32FC3)
+	frameRegion32FC3 = frameRegion32FC3.Reshape(3, frameRegion.Rows()*frameRegion.Cols())
+
+	if isFirstIter {
+		gocv.KMeans(frameRegion32FC3, K, labels, termCriteria, 3, gocv.KMeansRandomCenters, centers)
+	} else {
+		gocv.KMeans(frameRegion32FC3, K, labels, termCriteria, 3, gocv.KMeansUseInitialLabels, centers)
+	}
+	labels.ConvertTo(labels, gocv.MatTypeCV16S)
+	kMeansImage := gocv.NewMatWithSize(frameRegion.Rows(), frameRegion.Cols(), gocv.MatTypeCV8UC3)
+	kMeansImageData, _ := kMeansImage.DataPtrUint8()
+	labelsData, _ := labels.DataPtrInt16()
+	for i := 0; i < len(labelsData); i++ {
+		kMeansImageData[i*3] = uint8(centers.GetFloatAt(int(labelsData[i]), 0))
+		kMeansImageData[i*3+1] = uint8(centers.GetFloatAt(int(labelsData[i]), 1))
+		kMeansImageData[i*3+2] = uint8(centers.GetFloatAt(int(labelsData[i]), 2))
+	}
+
+	return kMeansImage
 }
 
 // Main calibration function that calibrates the webcam projection space and the checker color models
@@ -1144,7 +1205,9 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 	termCriteria := gocv.NewTermCriteria(gocv.MaxIter+gocv.EPS, 30, 0.001)
 
 	mtx := gocv.NewMat()
+	defer mtx.Close()
 	dist := gocv.NewMat()
+	defer dist.Close()
 	rvecs := gocv.NewMat()
 	defer rvecs.Close()
 	tvecs := gocv.NewMat()
@@ -1196,11 +1259,15 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 	centers := gocv.NewMat()
 	defer centers.Close()
 
-	unlockWebcam()
+	// unlockWebcam()
 	fi.webcam.Read(&fi.img)
 	fi.debugWindow.IMShow(fi.img)
 	fi.debugWindow.WaitKey(1000)
-	lockWebcam(EXP_TIME, WB_HEAT)
+	// lockWebcam(EXP_TIME, WB_HEAT)
+
+	// cbSheet := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+	// defer cbSheet.Close()
+	// getSheet('z', &cbSheet)
 
 	isFirstKIter := true
 	prevTS := time.Now()
@@ -1213,9 +1280,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 		}
 
 		frame := fi.img.Clone()
-		defer frame.Close()
 		frameRegion := gocv.NewMat()
-		defer frameRegion.Close()
 
 		// Find the chess board corners
 		corners := gocv.NewMat()
@@ -1352,7 +1417,7 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 					c, mr, rb, mb,
 				}
 
-				isAllCircleMasksSeen, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels,
+				_, isSheetCalibrated = calibrateSheet(frame, &fi.img, quadrants, colorHistSums, nonColorHistSums, colorModels,
 					&nbHistsSampled, quadrantWindows, trackbarsS, trackbarsV)
 
 				if isSheetCalibrated {
@@ -1375,10 +1440,10 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 			isFirstKIter = false
 		}
 
-		if isCalibrated && !isLocked {
-			// lockWebcam(exposureTime, whiteBalanceTemperature)
-			isLocked = true
-		}
+		// if isCalibrated && !isLocked {
+		// 	// lockWebcam(exposureTime, whiteBalanceTemperature)
+		// 	isLocked = true
+		// }
 
 		if !rvec.Empty() {
 			// Draw the axes
@@ -1433,14 +1498,18 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 			fmt.Println("Key:", key)
 		}
 
+		frame.Close()
+		frameRegion.Close()
 		prevTS = time.Now()
 	}
 
+	fmt.Println("Closing windows ...")
 	for cidx := 0; cidx < len(colorModels); cidx++ {
 		colorHistSums[cidx].Close()
 		nonColorHistSums[cidx].Close()
 	}
 
+	fmt.Println("Releasing resources ...")
 	if isSheetCalibrated {
 		scChsBrd.ColorModels = colorModels
 		scChsBrd.Csf = colorSpaceFactor
@@ -1456,66 +1525,11 @@ func chessBoardCalibration(webcam *gocv.VideoCapture, debugWindow, projection *g
 	return scChsBrd
 }
 
-func loadCalibration(file string) straightChessboard {
-	b, err := os.ReadFile(file)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	scChsBrd := straightChessboard{}
-	err = scChsBrd.UnMarshalJSON(b)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	return scChsBrd
-}
-
-func kMeansFrame(frameRegion gocv.Mat, K int, labels, centers *gocv.Mat, termCriteria gocv.TermCriteria, isFirstIter bool) gocv.Mat {
-	frameRegionHSV := gocv.NewMat()
-	defer frameRegionHSV.Close()
-	gocv.CvtColor(frameRegion, &frameRegionHSV, gocv.ColorBGRToHSV)
-
-	frameRegion8U_HSV := gocv.Split(frameRegionHSV)
-	defer frameRegion8U_HSV[0].Close()
-	defer frameRegion8U_HSV[1].Close()
-	defer frameRegion8U_HSV[2].Close()
-	// gocv.Threshold(frameRegion8U_HSV[0], &frameRegion8U_HSV[0], float32(tbs.GetPos()), 255, gocv.ThresholdBinary)
-	gocv.Threshold(frameRegion8U_HSV[1], &frameRegion8U_HSV[1], 60, 255, gocv.ThresholdBinary)
-	gocv.Threshold(frameRegion8U_HSV[2], &frameRegion8U_HSV[2], 0, 255, gocv.ThresholdBinary)
-	gocv.Merge(frameRegion8U_HSV, &frameRegionHSV)
-	gocv.CvtColor(frameRegionHSV, &frameRegion, gocv.ColorHSVToBGR)
-
-	frameRegion8UC3 := gocv.NewMat()
-	defer frameRegion8UC3.Close()
-	frameRegion.ConvertTo(&frameRegion8UC3, gocv.MatTypeCV8UC3)
-
-	frameRegion32FC3 := gocv.NewMat()
-	defer frameRegion32FC3.Close()
-	frameRegion.ConvertTo(&frameRegion32FC3, gocv.MatTypeCV32FC3)
-	frameRegion32FC3 = frameRegion32FC3.Reshape(3, frameRegion.Rows()*frameRegion.Cols())
-
-	if isFirstIter {
-		gocv.KMeans(frameRegion32FC3, K, labels, termCriteria, 3, gocv.KMeansRandomCenters, centers)
-	} else {
-		gocv.KMeans(frameRegion32FC3, K, labels, termCriteria, 3, gocv.KMeansUseInitialLabels, centers)
-	}
-	labels.ConvertTo(labels, gocv.MatTypeCV16S)
-	kMeansImage := gocv.NewMatWithSize(frameRegion.Rows(), frameRegion.Cols(), gocv.MatTypeCV8UC3)
-	kMeansImageData, _ := kMeansImage.DataPtrUint8()
-	labelsData, _ := labels.DataPtrInt16()
-	for i := 0; i < len(labelsData); i++ {
-		kMeansImageData[i*3] = uint8(centers.GetFloatAt(int(labelsData[i]), 0))
-		kMeansImageData[i*3+1] = uint8(centers.GetFloatAt(int(labelsData[i]), 1))
-		kMeansImageData[i*3+2] = uint8(centers.GetFloatAt(int(labelsData[i]), 2))
-	}
-
-	return kMeansImage
-}
-
 func detectPattern(webcam *gocv.VideoCapture, debugWindow, projection *gocv.Window, scChsBrd straightChessboard) {
 	debugWindow.ResizeWindow(1024, 768)
 
+	cbWindow := gocv.NewWindow("projection")
+	defer cbWindow.Close()
 	img := gocv.NewMat()
 	defer img.Close()
 	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
@@ -1529,11 +1543,11 @@ func detectPattern(webcam *gocv.VideoCapture, debugWindow, projection *gocv.Wind
 		cimg:        cimg,
 	}
 
-	unlockWebcam()
-	fi.webcam.Read(&fi.img)
-	fi.debugWindow.IMShow(fi.img)
-	fi.debugWindow.WaitKey(1000)
-	lockWebcam(EXP_TIME, WB_HEAT)
+	// unlockWebcam()
+	// fi.webcam.Read(&fi.img)
+	// fi.debugWindow.IMShow(fi.img)
+	// fi.debugWindow.WaitKey(1000)
+	// lockWebcam(EXP_TIME, WB_HEAT)
 
 	masks := []*Deque{}
 	for i := 0; i < 4; i++ {
@@ -1541,14 +1555,18 @@ func detectPattern(webcam *gocv.VideoCapture, debugWindow, projection *gocv.Wind
 		masks = append(masks, deque)
 	}
 
-	K := NB_CLRD_CHCKRS + 1
+	// K := NB_CLRD_CHCKRS + 1
 	labels := gocv.NewMat()
 	defer labels.Close()
 	centers := gocv.NewMat()
 	defer centers.Close()
-	termCriteria := gocv.NewTermCriteria(gocv.EPS+gocv.Count, 10, 1.0)
+	// termCriteria := gocv.NewTermCriteria(gocv.EPS+gocv.Count, 10, 1.0)
 
-	isFirstIter := true
+	// cbSheet := gocv.NewMatWithSize(chessHeight*blockHeight, chessWidth*blockWidth, gocv.MatTypeCV8UC3)
+	// defer cbSheet.Close()
+	// getSheet('z', &cbSheet)
+
+	// isFirstIter := true
 	prevTS := time.Now()
 	for {
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -1563,16 +1581,16 @@ func detectPattern(webcam *gocv.VideoCapture, debugWindow, projection *gocv.Wind
 		frameRegion := beamerToChessboard(frame, scChsBrd)
 		defer frameRegion.Close()
 
-		kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteria, isFirstIter)
-		defer kMeansImage.Close()
-		detectColors(kMeansImage, scChsBrd.ColorModels, masks, scChsBrd.Csf)
+		// kMeansImage := kMeansFrame(frameRegion, K, &labels, &centers, termCriteria, isFirstIter)
+		// defer kMeansImage.Close()
+		// detectColors(kMeansImage, scChsBrd.ColorModels, masks, scChsBrd.Csf)
 
 		currentTS := time.Now()
 		elapsedTime := currentTS.Sub(prevTS)
 		fps := float64(time.Second) / float64(elapsedTime)
 		prettyPutText(&fi.img, fmt.Sprintf("FPS: %.2f", fps), image.Pt(10, 15), colorWhite, 0.4)
 
-		fi.projection.IMShow(kMeansImage)
+		fi.projection.IMShow(frameRegion)
 		fi.debugWindow.IMShow(fi.img)
 
 		key := fi.debugWindow.WaitKey(WAIT)
@@ -1580,7 +1598,10 @@ func detectPattern(webcam *gocv.VideoCapture, debugWindow, projection *gocv.Wind
 			break
 		}
 
-		isFirstIter = false
+		// getSheet(key, &cbSheet)
+		// cbWindow.IMShow(cbSheet)
+
+		// isFirstIter = false
 		prevTS = time.Now()
 	}
 }
