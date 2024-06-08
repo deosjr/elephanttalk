@@ -19,6 +19,7 @@ type calibrationResults struct {
 	displacement    point
 	displayRatio    float64
 	referenceColors []color.RGBA
+	scChsBrd        straightChessboard
 }
 
 func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window) calibrationResults {
@@ -32,6 +33,8 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	// TODO probably rename these
 	// img: debug window output from camera
 	// cimg: projector window
+	scChsBrd := loadCalibration("calibration.json")
+
 	img := gocv.NewMat()
 	defer img.Close()
 
@@ -55,9 +58,10 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 		projection:  projection,
 		img:         img,
 		cimg:        cimg,
+		scChsBrd:    scChsBrd,
 	}
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
 		// find calibration pattern, draw around it
 		for k, v := range spatialPartition {
 			if !findCalibrationPattern(v) {
@@ -126,7 +130,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	// ratio between webcam and beamer
 	displayRatio := 1.0
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
 		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 		gocv.Line(&cimg, image.Pt(w-5+200, h), image.Pt(w+5+200, h), red, 2)
 		gocv.Line(&cimg, image.Pt(w+200., h-5), image.Pt(w+200, h+5), red, 2)
@@ -166,7 +170,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 		return calibrationResults{}
 	}
 
-	if err := frameloop(fi, func(actualImage image.Image, spatialPartition map[image.Rectangle][]circle) {
+	if err := frameloop(fi, func(actualImage image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
 		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 
 		for k, v := range spatialPartition {
@@ -219,7 +223,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	}
 
 	// TODO: happy (y/n) ? if no return to start of calibration
-	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples}
+	return calibrationResults{pixPerCM, displacement, displayRatio, colorSamples, scChsBrd}
 }
 
 type straightChessboard struct {

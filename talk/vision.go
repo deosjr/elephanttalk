@@ -47,11 +47,12 @@ type frameInput struct {
 	debugWindow *gocv.Window
 	projection  *gocv.Window
 	// TODO: should these be passed as ptrs?
-	img  gocv.Mat
-	cimg gocv.Mat
+	img      gocv.Mat
+	cimg     gocv.Mat
+	scChsBrd straightChessboard
 }
 
-func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle), ref []color.RGBA, waitMillis int) error {
+func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, straightChessboard), ref []color.RGBA, waitMillis int) error {
 	for {
 		start := time.Now()
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -64,7 +65,7 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle),
 		actualImage, _ := fi.img.ToImage()
 		spatialPartition := detect(fi.img, actualImage, ref)
 
-		f(actualImage, spatialPartition)
+		f(actualImage, spatialPartition, fi.scChsBrd)
 
 		fps := time.Second / time.Since(start)
 		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
@@ -108,7 +109,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 	persistCorners := map[corner]persistPage{}
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
 		clear(l)
 		datalogIDs := map[uint64]int{}
 
