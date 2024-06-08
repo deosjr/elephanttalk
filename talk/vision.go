@@ -52,7 +52,7 @@ type frameInput struct {
 	scChsBrd straightChessboard
 }
 
-func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, straightChessboard), ref []color.RGBA, waitMillis int) error {
+func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle), ref []color.RGBA, waitMillis int) error {
 	for {
 		start := time.Now()
 		if ok := fi.webcam.Read(&fi.img); !ok {
@@ -61,16 +61,19 @@ func frameloop(fi frameInput, f func(image.Image, map[image.Rectangle][]circle, 
 		if fi.img.Empty() {
 			continue
 		}
+
+		straightImage := beamerToChessboard(fi.img, fi.scChsBrd)
+
 		// since detect draws in img, we take a snapshot first
-		actualImage, _ := fi.img.ToImage()
+		actualImage, _ := straightImage.ToImage() //fi.img.ToImage()
 		spatialPartition := detect(fi.img, actualImage, ref)
 
-		f(actualImage, spatialPartition, fi.scChsBrd)
+		f(actualImage, spatialPartition)
 
 		fps := time.Second / time.Since(start)
-		gocv.PutText(&fi.img, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
+		gocv.PutText(&straightImage, fmt.Sprintf("FPS: %d", fps), image.Pt(0, 20), 0, .5, color.RGBA{}, 2)
 
-		fi.debugWindow.IMShow(fi.img)
+		fi.debugWindow.IMShow(straightImage)
 		fi.projection.IMShow(fi.cimg)
 		key := fi.debugWindow.WaitKey(waitMillis)
 		if key >= 0 {
@@ -84,6 +87,8 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 	defer img.Close()
 	cimg := gocv.NewMatWithSize(beamerHeight, beamerWidth, gocv.MatTypeCV8UC3)
 	defer cimg.Close()
+
+	straightener := loadCalibration("calibration.json")
 
 	l := LoadRealTalk()
 	// translate to beamerspace
@@ -99,6 +104,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 		projection:  projection,
 		img:         img,
 		cimg:        cimg,
+		scChsBrd:    straightener,
 	}
 
 	// ttl in frames; essentially buffering page location for flaky detection
@@ -109,7 +115,7 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 	persistCorners := map[corner]persistPage{}
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
 		clear(l)
 		datalogIDs := map[uint64]int{}
 
@@ -350,9 +356,9 @@ func vision(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window, cRe
 
 			// in lisp we store the points already translated to beamerspace instead of webcamspace
 			// NOTE: this means distances between papers in inches should use a conversion as well!
-			for i, pt := range pts {
-				pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
-			}
+			//for i, pt := range pts {
+			//	pts[i] = translate(pt, cResults.displacement, cResults.displayRatio)
+			//}
 
 			dID := page2lisp(l, p, pts)
 			datalogIDs[p.id] = dID

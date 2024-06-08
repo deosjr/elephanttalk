@@ -72,7 +72,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 		scChsBrd:    scChsBrd,
 	}
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
 		// find calibration pattern, draw around it
 		for k, v := range spatialPartition {
 			if !findCalibrationPattern(v) {
@@ -141,7 +141,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 	// ratio between webcam and beamer
 	displayRatio := 1.0
 
-	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
+	if err := frameloop(fi, func(_ image.Image, spatialPartition map[image.Rectangle][]circle) {
 		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 		gocv.Line(&cimg, image.Pt(w-5+200, h), image.Pt(w+5+200, h), red, 2)
 		gocv.Line(&cimg, image.Pt(w+200., h-5), image.Pt(w+200, h+5), red, 2)
@@ -181,7 +181,7 @@ func calibration(webcam *gocv.VideoCapture, debugwindow, projection *gocv.Window
 		return calibrationResults{}
 	}
 
-	if err := frameloop(fi, func(actualImage image.Image, spatialPartition map[image.Rectangle][]circle, scChsBrd straightChessboard) {
+	if err := frameloop(fi, func(actualImage image.Image, spatialPartition map[image.Rectangle][]circle) {
 		gocv.Rectangle(&cimg, image.Rect(0, 0, beamerWidth, beamerHeight), color.RGBA{}, -1)
 
 		for k, v := range spatialPartition {
