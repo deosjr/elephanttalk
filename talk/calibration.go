@@ -14,6 +14,17 @@ import (
 const WEBCAM_HEIGHT = 720
 const WEBCAM_WIDTH = 1280
 
+const STRAIGHT_W = 600 // width of the straight chessboard
+const STRAIGHT_H = 331 // height of the straight chessboard
+var colorBlack = color.RGBA{0, 0, 0, 255}
+var colorWhite = color.RGBA{255, 255, 255, 255}
+var colorRed = color.RGBA{255, 0, 0, 255}
+var colorGreen = color.RGBA{0, 255, 0, 255}
+var colorBlue = color.RGBA{0, 0, 255, 255}
+var colorYellow = color.RGBA{255, 255, 0, 255}
+var colorCyan = color.RGBA{0, 255, 255, 255}
+var colorMagenta = color.RGBA{255, 0, 255, 255}
+
 type calibrationResults struct {
 	pixelsPerCM     float64
 	displacement    point
