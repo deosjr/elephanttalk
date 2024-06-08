@@ -11,6 +11,9 @@ import (
 	"gocv.io/x/gocv"
 )
 
+const WEBCAM_HEIGHT = 720
+const WEBCAM_WIDTH = 1280
+
 type calibrationResults struct {
 	pixelsPerCM     float64
 	displacement    point
@@ -282,4 +285,15 @@ func loadCalibration(file string) straightChessboard {
 	}
 
 	return scChsBrd
+}
+
+// Helper function to convert image.Rectangle to string
+func rectToString(r image.Rectangle) string {
+	return fmt.Sprintf("%d,%d,%d,%d", r.Min.X, r.Min.Y, r.Max.X, r.Max.Y)
+}
+
+func stringToRect(s string) image.Rectangle {
+	var r image.Rectangle
+	fmt.Sscanf(s, "%d,%d,%d,%d", &r.Min.X, &r.Min.Y, &r.Max.X, &r.Max.Y)
+	return r
 }

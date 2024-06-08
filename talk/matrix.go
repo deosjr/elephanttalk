@@ -8,6 +8,8 @@ import (
 	"gocv.io/x/gocv"
 )
 
+const EPSILON = 0.0000001
+
 func matToDoubleSlice64F(mat gocv.Mat) []float64 {
 	if !(mat.Type() == gocv.MatTypeCV64F || mat.Type() == gocv.MatTypeCV64FC3) {
 		fmt.Println("matToDoubleSlice64F mat type", mat.Type())
