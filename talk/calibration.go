@@ -301,3 +301,27 @@ func stringToRect(s string) image.Rectangle {
 	fmt.Sscanf(s, "%d,%d,%d,%d", &r.Min.X, &r.Min.Y, &r.Max.X, &r.Max.Y)
 	return r
 }
+
+func beamerToChessboard(frame gocv.Mat, sc straightChessboard) gocv.Mat {
+	dstSize := image.Pt(STRAIGHT_W, STRAIGHT_H)
+
+	canvas := gocv.NewMat()
+	defer canvas.Close()
+	gocv.Remap(frame, &canvas, sc.MapX, sc.MapY, gocv.InterpolationLinear, gocv.BorderConstant, colorBlack)
+
+	cbRegion := canvas.Region(sc.Roi)
+	defer cbRegion.Close()
+
+	scbRegion := gocv.NewMat()
+	gocv.WarpPerspectiveWithParams(cbRegion, &scbRegion, sc.M, dstSize,
+		gocv.InterpolationLinear, gocv.BorderConstant, colorBlack)
+
+	return scbRegion
+}
+
+func chessboardToBeamer(frame gocv.Mat, sc straightChessboard) gocv.Mat {
+	scbRegion := gocv.NewMat()
+	gocv.WarpPerspectiveWithParams(frame, &scbRegion, sc.M, image.Pt(sc.MapX.Cols(), sc.MapX.Rows()),
+		gocv.InterpolationLinear|gocv.WarpInverseMap, gocv.BorderConstant, colorBlack)
+	return scbRegion
+}
